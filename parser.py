@@ -19,7 +19,8 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def send_telegram(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
@@ -38,22 +39,20 @@ def get_current_month_and_year():
     return month_name, year
 
 def get_file_hash(filepath):
-    if not os.path.exists(filepath): return None
-    with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
+    if not os.path.exists(filepath):
+        return None
+    with open(filepath, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
 
 async def js_click(page, text):
-    """Агрессивный клик через JS, обходит любые проверки видимости"""
     try:
         result = await page.evaluate(f"""
             () => {{
                 const target = '{text}';
-                // Ищем все элементы с точным совпадением текста
                 const elements = Array.from(document.querySelectorAll('*'));
                 const match = elements.find(el => el.textContent.trim() === target);
-                
                 if (match) {{
                     match.scrollIntoView({{block: 'center', inline: 'center'}});
-                    // Диспатчим реальное событие клика
                     match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
                     return true;
                 }}
@@ -85,23 +84,23 @@ async def main():
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # 1. Принудительно удаляем баннер cookie и любые модальные окна из DOM
+            # Удаляем баннер cookie
             await page.evaluate("""
                 () => {
                     document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
                 }
             """)
-            print("✅ Баннеры и модальные окна удалены")
+            print("✅ Баннеры удалены")
             await page.wait_for_timeout(1000)
             
-            # 2. Последовательно выбираем параметры через JS-клик
+            # Выбираем параметры
             targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
             for text in targets:
                 await js_click(page, text)
-                await page.wait_for_timeout(1200)  # Пауза между кликами для срабатывания AJAX
+                await page.wait_for_timeout(1200)
             
-            print("⏳ Ожидаем загрузки таблицы расписания...")
-            await page.wait_for_timeout(4000)  # Дополнительное время на отрисовку
+            print(" Ожидаем загрузки таблицы...")
+            await page.wait_for_timeout(5000)
             
             html = await page.content()
             await browser.close()
@@ -112,28 +111,24 @@ async def main():
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    # 3. Проверка: загрузилось ли расписание
+    # Проверяем загрузку
     if GROUP not in html and "Основы российской государственности" not in html:
-        print("❌ Расписание не загрузилось. Группа или предметы не найдены в HTML.")
-        
-        # Сохраняем debug.html (теперь workflow его закоммитит!)
+        print("❌ Расписание не загрузилось.")
         with open('debug.html', 'w', encoding='utf-8') as f:
             f.write(html)
-        print("💾 Файл debug.html создан и будет сохранен в репозитории.")
+        print("💾 debug.html сохранен")
         
-        # Также выводим начало body в консоль, чтобы вы могли скопировать его прямо отсюда
         soup = BeautifulSoup(html, 'html.parser')
         body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
-        print(f"🔍 ФРАГМЕНТ ТЕКСТА СТРАНИЦЫ (первые 1000 символов):\n{body_text[:1000]}")
+        print(f"🔍 ТЕКСТ СТРАНИЦЫ:\n{body_text[:1500]}")
         
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    print("✅ Данные расписания успешно найдены в HTML!")
+    print("✅ Данные найдены!")
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Ищем ячейки расписания
     table = soup.find('table')
     if table:
         schedule_cells = table.find_all('td', attrs={'data-group': True})
@@ -142,7 +137,7 @@ async def main():
     else:
         schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'group' in c.lower()))
 
-    print(f"🔍 Найдено потенциальных ячеек: {len(schedule_cells)}")
+    print(f"🔍 Найдено ячеек: {len(schedule_cells)}")
     
     for cell in schedule_cells:
         try:
@@ -211,7 +206,6 @@ async def main():
     events_data = unique_events
     print(f"📚 Найдено уникальных пар: {len(events_data)}")
 
-    # Создаем ICS
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
@@ -246,3 +240,4 @@ async def main():
         send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
 
 if __name__ == "__main__":
+    asyncio.run(main())
