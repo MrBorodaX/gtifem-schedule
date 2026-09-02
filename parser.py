@@ -32,7 +32,7 @@ async def main():
             await page.wait_for_load_state("networkidle")
             
             # Настройки (замените на ваши реальные, если отличаются)
-            targets = ["Бакалавриат", "Экономика", "1 курс", "1001", "Сентябрь"]
+            targets = ["Бакалавриат", "Логистика", "1 курс", "6661", "Сентябрь"]
             for text in targets:
                 try:
                     await page.get_by_text(text, exact=True).first.click()
