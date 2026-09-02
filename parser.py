@@ -174,10 +174,14 @@ async def main():
             """)
             
             await js_click_by_text(page, DEPARTMENT); await page.wait_for_timeout(1500)
-            await js_click_by_text(page, MAJOR); await wait_for_visible_elements(page, ".section.courses ul li a", 10000); await page.wait_for_timeout(1500)
-            await js_click_by_text(page, COURSE); await wait_for_visible_elements(page, ".section.groups ul li a", 10000); await page.wait_for_timeout(1500)
-            await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", 10000); await page.wait_for_timeout(1500)
-            await js_click_by_text(page, current_month_ui); await page.wait_for_selector("table", 15000); await page.wait_for_timeout(3000)
+            await js_click_by_text(page, MAJOR); await wait_for_visible_elements(page, ".section.courses ul li a", timeout=10000); await page.wait_for_timeout(1500)
+            await js_click_by_text(page, COURSE); await wait_for_visible_elements(page, ".section.groups ul li a", timeout=10000); await page.wait_for_timeout(1500)
+            await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000); await page.wait_for_timeout(1500)
+            
+            # ИСПРАВЛЕНО: timeout=15000 вместо 15000
+            await js_click_by_text(page, current_month_ui)
+            await page.wait_for_selector("table", timeout=15000)
+            await page.wait_for_timeout(3000)
             
             html = await page.content()
             await browser.close()
@@ -275,7 +279,6 @@ async def main():
     
     if not added and not removed and not changed:
         print("✅ Изменений не найдено.")
-        # При первом запуске или отсутствии изменений просто информируем
         if not old_events:
             send_telegram(f"✅ <b>Парсер успешно запущен!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар загружено: {len(final_events)}\n\nТеперь бот будет следить за изменениями.")
     else:
