@@ -35,14 +35,12 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         
-        # ГАРАНТИЯ: создаем файл, если его вдруг нет, чтобы git add не падал
-        touch schedule.ics
-        git add schedule.ics
+        # Добавляем и расписание, и файл отладки (если он создан)
+        git add schedule.ics debug.html
         
         if git diff --staged --quiet; then
-          echo "Изменений в расписании нет, пропускаем коммит."
+          echo "Изменений нет."
         else
-          echo "Найдены изменения, сохраняем..."
-          git commit -m "chore: update schedule.ics"
+          git commit -m "chore: update schedule and debug files"
           git push origin HEAD:$(git branch --show-current)
         fi
