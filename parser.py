@@ -45,23 +45,18 @@ def send_telegram(message):
         return False
 
 def get_semester_months():
-    """Возвращает список месяцев от сентября до конца текущего семестра"""
     now = datetime.now()
     month_num = now.month
     
-    # Определяем текущий семестр и год
     if 9 <= month_num <= 12:
-        # Осенний семестр: сентябрь-декабрь
-        start_idx = 0  # сентябрь
-        end_idx = 3    # декабрь
+        start_idx = 0
+        end_idx = 3
         year = now.year
     elif 1 <= month_num <= 6:
-        # Весенний семестр: январь-июнь
-        start_idx = 4  # январь
-        end_idx = 9    # июнь
-        year = now.year + 1  # учебный год начинается с сентября прошлого года
+        start_idx = 4
+        end_idx = 9
+        year = now.year + 1
     else:
-        # Июль/август - каникулы, начинаем с сентября
         start_idx = 0
         end_idx = 3
         year = now.year
@@ -69,10 +64,9 @@ def get_semester_months():
     months = []
     for idx in range(start_idx, end_idx + 1):
         month_name = MONTHS_ORDER[idx]
-        month_year = year if idx >= 4 else year  # январь-июнь = следующий год
-        if idx < 4:  # сентябрь-декабрь
+        if idx < 4:
             month_year = year
-        else:  # январь-июнь
+        else:
             month_year = year + 1
         months.append((month_name, month_year))
     
@@ -211,9 +205,9 @@ def get_diff(old_list, new_list):
             old_e = old_dict[key]
             diffs = []
             if old_e.get('subject_name') != new_e.get('subject_name'):
-                diffs.append(f"Предмет: {old_e.get('subject_name')} ️ {new_e.get('subject_name')}")
+                diffs.append(f"Предмет: {old_e.get('subject_name')} ➡️ {new_e.get('subject_name')}")
             if old_e.get('room') != new_e.get('room'):
-                diffs.append(f"Аудитория: {old_e.get('room')} ➡️ {new_e.get('room')}")
+                diffs.append(f"Аудитория: {old_e.get('room')} ️ {new_e.get('room')}")
             if old_e.get('teacher') != new_e.get('teacher'):
                 diffs.append(f"Преподаватель: {old_e.get('teacher')} ➡️ {new_e.get('teacher')}")
             if diffs:
@@ -229,14 +223,11 @@ def get_diff(old_list, new_list):
     
     return added, removed, changed
 
-def format_telegram_message(added, removed, changed, months_info, is_full_update=False):
+def format_telegram_message(added, removed, changed, months_info):
     month_names = ", ".join([m.capitalize() for m, y in months_info[:3]])
     if len(months_info) > 3:
         month_names += f" и ещё {len(months_info) - 3} мес."
     
-    if is_full_update:
-        return f"🔄 <b>Расписание полностью обновлено ({month_names})</b>"
-
     msg = f"🚨 <b>Изменения в расписании ({month_names})</b>\n\n"
     
     def group_by_month(events):
@@ -246,7 +237,7 @@ def format_telegram_message(added, removed, changed, months_info, is_full_update
         return groups
     
     if added:
-        msg += "➕ <b>Добавлено:</b>\n"
+        msg += " <b>Добавлено:</b>\n"
         for month, events in group_by_month(added).items():
             msg += f"  <i>{month.capitalize()}:</i>\n"
             for ev in events[:5]:
@@ -256,7 +247,7 @@ def format_telegram_message(added, removed, changed, months_info, is_full_update
         msg += "\n"
     
     if removed:
-        msg += "➖ <b>Отменено:</b>\n"
+        msg += " <b>Отменено:</b>\n"
         for month, events in group_by_month(removed).items():
             msg += f"  <i>{month.capitalize()}:</i>\n"
             for ev in events[:5]:
@@ -334,7 +325,7 @@ async def main():
         print(f"❌ Ошибка браузера: {e}")
         return
     
-    print(f"\n Всего найдено пар за семестр: {len(all_events)}")
+    print(f"\n📚 Всего найдено пар за семестр: {len(all_events)}")
     
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
@@ -357,43 +348,37 @@ async def main():
     
     new_ics_data = cal.to_ical()
     
+    # Сравниваем со старым расписанием
     added, removed, changed = get_diff(old_events, all_events)
     
+    # 🛡️ АНТИ-СПАМ ФИЛЬТР
     is_full_update = False
     if len(all_events) > 0 and len(added) > len(all_events) * 0.5:
         is_full_update = True
     if len(old_events) > 0 and len(removed) > len(old_events) * 0.5:
         is_full_update = True
-        
+    
+    # ✅ ВСЕГДА сохраняем файлы (и ICS, и JSON), чтобы в следующий раз было с чем сравнивать
+    with open('schedule.ics', 'wb') as f:
+        f.write(new_ics_data)
+    with open('schedule.json', 'w', encoding='utf-8') as f:
+        json.dump(all_events, f, ensure_ascii=False, indent=2)
+    print("💾 Файлы schedule.ics и schedule.json сохранены")
+    
     if is_full_update:
-        added = []
-        removed = []
-        changed = []
-        print("🛡️ Сработал анти-спам фильтр: распознано как полное обновление.")
-
-    if not added and not removed and not changed:
-        print("✅ Изменений не найдено.")
-        if not old_events:
-            month_names_short = ", ".join([m.capitalize() for m, y in months_info[:3]])
-            if len(months_info) > 3:
-                month_names_short += f" и др."
-            send_telegram(f"✅ <b>Парсер успешно запущен!</b>\n\nГруппа: {GROUP}\nМесяцы: {month_names_short}\nПар загружено: {len(all_events)}\n\nТеперь бот будет следить за изменениями.")
-    else:
-        print("🔥 Найдены изменения! Сохраняем и отправляем...")
-        with open('schedule.ics', 'wb') as f:
-            f.write(new_ics_data)
-        with open('schedule.json', 'w', encoding='utf-8') as f:
-            json.dump(all_events, f, ensure_ascii=False, indent=2)
-        
-        if is_full_update:
-            month_names_short = ", ".join([m.capitalize() for m, y in months_info[:3]])
-            if len(months_info) > 3:
-                month_names_short += f" и др."
-            msg = f"🔄 <b>Расписание полностью обновлено ({month_names_short})</b>\n\nГруппа: {GROUP}\nВсего пар в календаре: {len(all_events)}\n\nGoogle Календарь обновится в течение 24 часов."
-        else:
-            msg = format_telegram_message(added, removed, changed, months_info)
-            
+        # Полное обновление — короткое уведомление
+        month_names_short = ", ".join([m.capitalize() for m, y in months_info[:3]])
+        if len(months_info) > 3:
+            month_names_short += f" и др."
+        msg = f"🔄 <b>Расписание полностью обновлено ({month_names_short})</b>\n\nГруппа: {GROUP}\nВсего пар в календаре: {len(all_events)}\n\nGoogle Календарь обновится в течение 24 часов."
         send_telegram(msg)
+    elif added or removed or changed:
+        # Есть конкретные изменения — подробное уведомление
+        msg = format_telegram_message(added, removed, changed, months_info)
+        send_telegram(msg)
+    else:
+        # Изменений нет — молчим (или можно отправить короткое "всё ок")
+        print("✅ Изменений не найдено. Уведомление не отправляем.")
 
 if __name__ == "__main__":
     asyncio.run(main())
