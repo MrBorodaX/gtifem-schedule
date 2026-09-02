@@ -18,6 +18,14 @@ jobs:
       with:
         python-version: '3.11'
         
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ runner.os }}
+        restore-keys: |
+          playwright-browsers-
+        
     - name: Install dependencies
       run: |
         pip install playwright beautifulsoup4 icalendar pytz requests
@@ -31,16 +39,7 @@ jobs:
       run: python parser.py
       
     - name: Commit and push if changed
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Добавляем и расписание, и файл отладки (если он создан)
-        git add schedule.ics debug.html
-        
-        if git diff --staged --quiet; then
-          echo "Изменений нет."
-        else
-          git commit -m "chore: update schedule and debug files"
-          git push origin HEAD:$(git branch --show-current)
-        fi
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "chore: auto-update schedule files"
+        file_pattern: "schedule.ics schedule.json debug.html"
