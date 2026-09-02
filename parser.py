@@ -44,28 +44,6 @@ def get_file_hash(filepath):
     with open(filepath, 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()
 
-async def js_click(page, text):
-    try:
-        result = await page.evaluate(f"""
-            () => {{
-                const target = '{text}';
-                const elements = Array.from(document.querySelectorAll('*'));
-                const match = elements.find(el => el.textContent.trim() === target);
-                if (match) {{
-                    match.scrollIntoView({{block: 'center', inline: 'center'}});
-                    match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
-                    return true;
-                }}
-                return false;
-            }}
-        """)
-        if result:
-            print(f"✅ Выбрано (JS click): {text}")
-        else:
-            print(f"⚠️ Элемент '{text}' не найден для клика")
-    except Exception as e:
-        print(f"⚠️ Ошибка JS клика для '{text}': {e}")
-
 async def main():
     print("🚀 Запуск умного парсера...")
     
@@ -85,43 +63,82 @@ async def main():
             await page.wait_for_timeout(2000)
             
             # Удаляем баннер cookie
-            await page.evaluate("""
-                () => {
-                    document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
-                }
-            """)
-            print("✅ Баннеры удалены")
+            try:
+                await page.evaluate("""
+                    () => {
+                        document.querySelectorAll('.sc-widget, .cookie-banner').forEach(el => el.remove());
+                    }
+                """)
+                print("✅ Баннер cookie удален")
+            except:
+                pass
+            
+            # ШАГ 1: Кликаем по "Бакалавриат" (он виден сразу)
+            print("Выбираем отделение...")
+            await page.click("text=Бакалавриат", timeout=10000)
+            await page.wait_for_timeout(1500)
+            print("✅ Бакалавриат выбран")
+            
+            # ШАГ 2: Ждем появления секции "Направление" и кликаем по "Логистика"
+            print("Выбираем направление...")
+            await page.wait_for_selector(".section.specials", state="visible", timeout=10000)
+            await page.click("text=Логистика", timeout=10000)
+            await page.wait_for_timeout(1500)
+            print("✅ Логистика выбрана")
+            
+            # ШАГ 3: Ждем появления секции "Курс" и кликаем по "1 курс"
+            print("Выбираем курс...")
+            await page.wait_for_selector(".section.courses", state="visible", timeout=10000)
+            # Для курса нужно кликнуть по первому "1 курс" в видимой секции
+            await page.locator(".section.courses a:has-text('1 курс')").first.click(timeout=10000)
+            await page.wait_for_timeout(1500)
+            print("✅ 1 курс выбран")
+            
+            # ШАГ 4: Ждем появления секции "Группа" и заполнения списка
+            print("Выбираем группу...")
+            await page.wait_for_selector(".section.groups", state="visible", timeout=10000)
+            # Ждем, пока список групп заполнится
+            await page.wait_for_selector(".section.groups ul li", timeout=10000)
             await page.wait_for_timeout(1000)
+            # Кликаем по группе 6661
+            await page.click("text=6661", timeout=10000)
+            await page.wait_for_timeout(1500)
+            print("✅ Группа 6661 выбрана")
             
-            # Выбираем параметры
-            targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
-            for text in targets:
-                await js_click(page, text)
-                await page.wait_for_timeout(1200)
+            # ШАГ 5: Ждем появления секции "Месяц" и кликаем по нужному месяцу
+            print("Выбираем месяц...")
+            await page.wait_for_selector(".section.months", state="visible", timeout=10000)
+            await page.wait_for_selector(".section.months ul li", timeout=10000)
+            await page.wait_for_timeout(1000)
+            # Кликаем по месяцу (например, "сентября")
+            await page.click(f"text={current_month}", timeout=10000)
+            await page.wait_for_timeout(1500)
+            print(f"✅ {current_month} выбран")
             
-            print(" Ожидаем загрузки таблицы...")
-            await page.wait_for_timeout(5000)
+            # ШАГ 6: Ждем появления таблицы расписания
+            print("⏳ Ожидаем загрузки таблицы...")
+            await page.wait_for_selector("table", timeout=15000)
+            await page.wait_for_timeout(3000)  # Дополнительное время на полную отрисовку
             
             html = await page.content()
             await browser.close()
             
     except Exception as e:
-        print(f"❌ Критическая ошибка браузера: {e}")
+        print(f" Ошибка: {e}")
+        with open('debug.html', 'w', encoding='utf-8') as f:
+            f.write(html if html else "")
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
     # Проверяем загрузку
-    if GROUP not in html and "Основы российской государственности" not in html:
+    if GROUP not in html:
         print("❌ Расписание не загрузилось.")
         with open('debug.html', 'w', encoding='utf-8') as f:
             f.write(html)
-        print("💾 debug.html сохранен")
-        
         soup = BeautifulSoup(html, 'html.parser')
         body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
-        print(f"🔍 ТЕКСТ СТРАНИЦЫ:\n{body_text[:1500]}")
-        
+        print(f"🔍 ТЕКСТ:\n{body_text[:1000]}")
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
@@ -135,7 +152,7 @@ async def main():
         if not schedule_cells:
             schedule_cells = table.find_all('td')
     else:
-        schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'group' in c.lower()))
+        schedule_cells = []
 
     print(f"🔍 Найдено ячеек: {len(schedule_cells)}")
     
@@ -225,7 +242,7 @@ async def main():
             event.add('dtend', end_dt)
             cal.add_component(event)
         except Exception as e:
-            print(f"⚠️ Ошибка создания события: {e}")
+            print(f"⚠️ Ошибка: {e}")
             continue
 
     new_ics_data = cal.to_ical()
@@ -234,7 +251,7 @@ async def main():
     if old_hash == new_hash:
         print("✅ Расписание не изменилось.")
     else:
-        print("🔥 Обнаружены изменения!")
+        print(" Обнаружены изменения!")
         with open('schedule.ics', 'wb') as f:
             f.write(new_ics_data)
         send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
