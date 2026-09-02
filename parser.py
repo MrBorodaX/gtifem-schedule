@@ -41,7 +41,7 @@ def get_file_hash(filepath):
     with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
 
 async def select_value(page, text):
-    """Выбор значения через JavaScript"""
+    """Выбор значения через JavaScript с прокруткой"""
     try:
         result = await page.evaluate(f"""
             () => {{
@@ -68,7 +68,6 @@ async def select_value(page, text):
                 return true;
             }}
         """)
-        
         if result:
             print(f"✅ Выбрано: {text}")
             await page.wait_for_timeout(800)
@@ -82,7 +81,6 @@ async def main():
     print(f"📅 Парсим месяц: {current_month} {current_year} года")
     
     old_hash = get_file_hash('schedule.ics')
-    
     events_data = []
     html = ""
     
@@ -98,11 +96,10 @@ async def main():
             targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
             for text in targets:
                 await select_value(page, text)
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)  # Увеличенная пауза для AJAX-запроса
             
-            print("Ожидаем появления таблицы...")
-            await page.wait_for_selector("table", timeout=10000)
-            await page.wait_for_timeout(2000)
+            print("⏳ Ожидаем загрузки данных...")
+            await page.wait_for_timeout(4000)  # Ждем 4 секунды после последнего клика
             
             html = await page.content()
             await browser.close()
@@ -113,66 +110,83 @@ async def main():
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
+    # Проверяем, загрузилось ли расписание
+    if GROUP not in html and "Основы российской государственности" not in html:
+        print("❌ Расписание не загрузилось. Группа или предметы не найдены в HTML.")
+        print("Фрагмент HTML (последние 500 символов):", html[-500:])
+        with open('schedule.ics', 'wb') as f:
+            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
+        return
+
+    print("✅ Данные расписания найдены в HTML!")
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Ищем ВСЕ ячейки с data-group (это и есть пары)
-    schedule_cells = soup.find_all('td', attrs={'data-group': True})
-    print(f"📊 Найдено ячеек с расписанием: {len(schedule_cells)}")
+    # Попытка 1: Ищем таблицу (как в большинстве случаев)
+    table = soup.find('table')
+    if table:
+        print("📊 Найдена таблица <table>")
+        schedule_cells = table.find_all('td', attrs={'data-group': True})
+        if not schedule_cells:
+            # Если data-group нет, ищем все td внутри таблицы
+            schedule_cells = table.find_all('td')
+    else:
+        print("⚠️ Таблица <table> не найдена, ищем в div'ах...")
+        schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'raspisanie' in c.lower() or 'group' in c.lower()))
+
+    print(f"🔍 Найдено потенциальных ячеек расписания: {len(schedule_cells)}")
     
     for cell in schedule_cells:
         try:
-            # Получаем данные из атрибутов
+            # Проверяем, относится ли ячейка к нашей группе
+            cell_text = cell.get_text(strip=True)
+            if GROUP not in cell.get('data-group', '') and GROUP not in cell_text:
+                # Если это не наша группа, пропускаем (но для матричной структуры проверяем иначе)
+                pass 
+            
+            # Извлекаем данные из атрибутов (если есть)
             data_day = cell.get('data-day', '')
             data_time = cell.get('data-time', '')
-            data_month = cell.get('data-month', current_month)
+            data_month_attr = cell.get('data-month', current_month)
             
-            # Пропускаем пустые ячейки
-            if not data_day or not data_time:
-                continue
-            
-            # Извлекаем предмет, аудиторию и преподавателя из div'ов
+            # Если это матричная структура (как в Excel), ищем по классам
             subject_div = cell.find('div', class_='subject')
             aud_div = cell.find('div', class_='aud')
             
-            # Получаем текст
             subject = subject_div.get_text(strip=True) if subject_div else ""
             
-            # Аудитория может быть в <b> внутри div.aud
+            room = ""
             if aud_div:
                 b_tag = aud_div.find('b')
                 room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
-            else:
-                room = ""
             
-            # Преподаватель - это div после .aud (но не .number)
             teacher = ""
-            for div in cell.find_all('div'):
-                if div.get('class') and 'aud' in div.get('class'):
-                    # Следующий sibling - преподаватель
-                    next_div = div.find_next_sibling('div')
-                    if next_div and (not next_div.get('class') or 'number' not in next_div.get('class', [])):
-                        teacher = next_div.get_text(strip=True)
-                    break
+            if aud_div:
+                next_div = aud_div.find_next_sibling('div')
+                if next_div and (not next_div.get('class') or 'number' not in next_div.get('class', [])):
+                    teacher = next_div.get_text(strip=True)
             
-            # Пропускаем пустые или специальные ячейки
             if not subject or subject in [". .", ""]:
                 continue
             
-            # Парсим время (формат: "16:00 - 17:40")
-            time_parts = data_time.replace(' ', '').split('-')
-            if len(time_parts) != 2:
-                continue
+            # Парсим время
+            time_parts = data_time.replace(' ', '').split('-') if data_time else []
+            if len(time_parts) == 2:
+                t_start, t_end = time_parts[0], time_parts[1]
+            else:
+                # Если времени нет в data-time, пытаемся найти его в тексте ячейки
+                import re
+                time_match = re.search(r'(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})', cell_text)
+                if time_match:
+                    t_start, t_end = time_match.groups()
+                else:
+                    continue
             
-            t_start = time_parts[0]
-            t_end = time_parts[1]
-            
-            # Определяем день месяца
-            day = int(data_day)
+            day = int(data_day) if data_day.isdigit() else 1
             month_map = {
                 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
                 'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06'
             }
-            month_num = month_map.get(data_month.lower(), '09')
+            month_num = month_map.get(data_month_attr.lower(), '09')
             date_fmt = f"{day:02d}.{month_num}.{current_year}"
             
             events_data.append({
@@ -183,12 +197,20 @@ async def main():
                 "room": room,
                 "teacher": teacher
             })
-            
         except Exception as e:
-            print(f"⚠️ Ошибка парсинга ячейки: {e}")
             continue
 
-    print(f"📚 Найдено пар: {len(events_data)}")
+    # Удаляем дубликаты (иногда парсер находит одно и то же несколько раз)
+    unique_events = []
+    seen = set()
+    for ev in events_data:
+        key = (ev['date'], ev['time_start'], ev['subject'])
+        if key not in seen:
+            seen.add(key)
+            unique_events.append(ev)
+    
+    events_data = unique_events
+    print(f"📚 Найдено уникальных пар: {len(events_data)}")
 
     # Создаем ICS
     cal = Calendar()
@@ -210,7 +232,7 @@ async def main():
             event.add('dtend', end_dt)
             cal.add_component(event)
         except Exception as e:
-            print(f"️ Ошибка создания события: {e}")
+            print(f"⚠️ Ошибка создания события: {e}")
             continue
 
     new_ics_data = cal.to_ical()
