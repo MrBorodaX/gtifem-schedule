@@ -40,21 +40,18 @@ def get_file_hash(filepath):
     if not os.path.exists(filepath): return None
     with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
 
-async def select_value(page, text, timeout=5000):
-    """Универсальный выбор через JavaScript с прокруткой"""
+async def select_value(page, text):
+    """Выбор значения через JavaScript"""
     try:
-        # Используем JavaScript для поиска и клика
         result = await page.evaluate(f"""
             () => {{
                 const targetText = '{text}';
-                // Ищем все элементы с текстом
                 const allElements = Array.from(document.querySelectorAll('*'));
                 const matches = allElements.filter(el => 
                     el.textContent && el.textContent.trim() === targetText
                 );
                 
                 if (matches.length === 0) {{
-                    // Пробуем частичное совпадение
                     const partialMatches = allElements.filter(el => 
                         el.textContent && targetText.toLowerCase().includes(el.textContent.trim().toLowerCase())
                     );
@@ -66,7 +63,6 @@ async def select_value(page, text, timeout=5000):
                     return false;
                 }}
                 
-                // Кликаем по первому совпадению
                 matches[0].scrollIntoView({{behavior: 'auto', block: 'center'}});
                 matches[0].click();
                 return true;
@@ -76,16 +72,14 @@ async def select_value(page, text, timeout=5000):
         if result:
             print(f"✅ Выбрано: {text}")
             await page.wait_for_timeout(800)
-        else:
-            print(f"️ Не найдено: {text}")
     except Exception as e:
-        print(f"️ Ошибка при выборе '{text}': {e}")
+        print(f"⚠️ Ошибка при выборе '{text}': {e}")
 
 async def main():
     print("🚀 Запуск умного парсера...")
     
     current_month, current_year = get_current_month_and_year()
-    print(f" Парсим месяц: {current_month} {current_year} года")
+    print(f"📅 Парсим месяц: {current_month} {current_year} года")
     
     old_hash = get_file_hash('schedule.ics')
     
@@ -98,30 +92,17 @@ async def main():
             page = await browser.new_page()
             await page.goto("https://gtifem.ru/dekanat/raspisanie/", timeout=30000)
             await page.wait_for_load_state("networkidle")
-            
-            # Ждем немного пока страница полностью загрузится
             await page.wait_for_timeout(2000)
             
-            # Последовательно выбираем все параметры через JavaScript
-            # Порядок важен: сначала отделение, потом направление, курс, группа, месяц
+            # Последовательно выбираем все параметры
             targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
-            
             for text in targets:
-                print(f"Выбираем: {text}")
                 await select_value(page, text)
-                await page.wait_for_timeout(1000)  # Ждем между выборами
+                await page.wait_for_timeout(1000)
             
             print("Ожидаем появления таблицы...")
-            # Пробуем найти таблицу разными способами
-            try:
-                await page.wait_for_selector("table", timeout=10000)
-            except:
-                # Если не нашли таблицу, пробуем подождать еще
-                print("Таблица не найдена сразу, ждем еще...")
-                await page.wait_for_timeout(3000)
-            
-            # Делаем скриншот для отладки (можно убрать потом)
-            await page.screenshot(path='debug.png', full_page=True)
+            await page.wait_for_selector("table", timeout=10000)
+            await page.wait_for_timeout(2000)
             
             html = await page.content()
             await browser.close()
@@ -133,58 +114,79 @@ async def main():
         return
 
     soup = BeautifulSoup(html, 'html.parser')
-    table = soup.find('table')
-    if not table:
-        print("❌ Таблица не найдена в HTML")
-        # Выводим первые 1000 символов HTML для отладки
-        print("HTML preview:", html[:1000])
-        with open('schedule.ics', 'wb') as f:
-            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
-        return
-
-    rows = table.find_all('tr')
-    print(f" Найдено строк в таблице: {len(rows)}")
     
-    headers = [th.get_text(strip=True) for th in rows[0].find_all(['th', 'td'])]
-    print(f"📌 Заголовки: {headers[:6]}...")  # Показываем первые 6
+    # Ищем ВСЕ ячейки с data-group (это и есть пары)
+    schedule_cells = soup.find_all('td', attrs={'data-group': True})
+    print(f"📊 Найдено ячеек с расписанием: {len(schedule_cells)}")
     
-    date_cols = []
-    for i, h in enumerate(headers):
-        if any(m in h.lower() for m in ['сентября', 'октября', 'ноября', 'декабря', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня']):
-            date_cols.append((i, h))
-    
-    print(f"📅 Найдено колонок с датами: {len(date_cols)}")
-
-    # Парсим матричную структуру (как в Excel)
-    for row_idx, row in enumerate(rows):
-        cells = row.find_all(['td', 'th'])
-        cell_texts = [c.get_text(strip=True) for c in cells]
-        
-        # Ищем строки с аудиториями (содержат "а." или ". .")
-        if len(cell_texts) > 1 and any("а." in text or text == ". ." for text in cell_texts[1:]):
-            if row_idx > 0 and row_idx < len(rows) - 1:
-                prev_cells = rows[row_idx - 1].find_all(['td', 'th'])  # Предметы
-                next_cells = rows[row_idx + 1].find_all(['td', 'th'])  # Преподаватели
-                
-                # Время берем из первой колонки
-                time_text = cells[0].get_text(strip=True)
-                if "-" not in time_text and len(prev_cells) > 0:
-                    time_text = prev_cells[0].get_text(strip=True)
-                
-                # Проходим по всем колонкам с датами
-                for col_idx, (date_idx, date_name) in enumerate(date_cols):
-                    target_idx = col_idx + 1
-                    
-                    if target_idx < len(cells) and target_idx < len(prev_cells) and target_idx < len(next_cells):
-                        subject = prev_cells[target_idx].get_text(strip=True)
-                        room = cells[target_idx].get_text(strip=True)
-                        teacher = next_cells[target_idx].get_text(strip=True)
-                        
-                        if subject and subject not in [". .", ""] and room not in [". .", ""]:
-                            events_data.append({
-                                "date": date_name, "time": time_text,
-                                "subject": subject, "room": room, "teacher": teacher
-                            })
+    for cell in schedule_cells:
+        try:
+            # Получаем данные из атрибутов
+            data_day = cell.get('data-day', '')
+            data_time = cell.get('data-time', '')
+            data_month = cell.get('data-month', current_month)
+            
+            # Пропускаем пустые ячейки
+            if not data_day or not data_time:
+                continue
+            
+            # Извлекаем предмет, аудиторию и преподавателя из div'ов
+            subject_div = cell.find('div', class_='subject')
+            aud_div = cell.find('div', class_='aud')
+            
+            # Получаем текст
+            subject = subject_div.get_text(strip=True) if subject_div else ""
+            
+            # Аудитория может быть в <b> внутри div.aud
+            if aud_div:
+                b_tag = aud_div.find('b')
+                room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
+            else:
+                room = ""
+            
+            # Преподаватель - это div после .aud (но не .number)
+            teacher = ""
+            for div in cell.find_all('div'):
+                if div.get('class') and 'aud' in div.get('class'):
+                    # Следующий sibling - преподаватель
+                    next_div = div.find_next_sibling('div')
+                    if next_div and (not next_div.get('class') or 'number' not in next_div.get('class', [])):
+                        teacher = next_div.get_text(strip=True)
+                    break
+            
+            # Пропускаем пустые или специальные ячейки
+            if not subject or subject in [". .", ""]:
+                continue
+            
+            # Парсим время (формат: "16:00 - 17:40")
+            time_parts = data_time.replace(' ', '').split('-')
+            if len(time_parts) != 2:
+                continue
+            
+            t_start = time_parts[0]
+            t_end = time_parts[1]
+            
+            # Определяем день месяца
+            day = int(data_day)
+            month_map = {
+                'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
+                'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06'
+            }
+            month_num = month_map.get(data_month.lower(), '09')
+            date_fmt = f"{day:02d}.{month_num}.{current_year}"
+            
+            events_data.append({
+                "date": date_fmt,
+                "time_start": t_start,
+                "time_end": t_end,
+                "subject": subject,
+                "room": room,
+                "teacher": teacher
+            })
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка парсинга ячейки: {e}")
+            continue
 
     print(f"📚 Найдено пар: {len(events_data)}")
 
@@ -194,11 +196,6 @@ async def main():
     cal.add('version', '2.0')
     tz = pytz.timezone('Europe/Moscow')
     
-    month_map = {
-        'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
-        'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06'
-    }
-    
     for ev in events_data:
         try:
             event = Event()
@@ -206,27 +203,14 @@ async def main():
             event.add('location', ev['room'])
             event.add('description', ev['teacher'])
             
-            parts = ev['date'].split()
-            if len(parts) >= 2:
-                day = parts[0].zfill(2)
-                month_name = parts[1].lower()
-                month = month_map.get(month_name, '09')
-                date_fmt = f"{day}.{month}.{current_year}"
-                
-                time_clean = ev['time'].replace(' ', '').replace('\n', '')
-                if '-' in time_clean:
-                    t_start, t_end = time_clean.split('-')
-                else:
-                    continue
-                
-                start_dt = tz.localize(datetime.strptime(f"{date_fmt} {t_start}", "%d.%m.%Y %H:%M"))
-                end_dt = tz.localize(datetime.strptime(f"{date_fmt} {t_end}", "%d.%m.%Y %H:%M"))
-                
-                event.add('dtstart', start_dt)
-                event.add('dtend', end_dt)
-                cal.add_component(event)
+            start_dt = tz.localize(datetime.strptime(f"{ev['date']} {ev['time_start']}", "%d.%m.%Y %H:%M"))
+            end_dt = tz.localize(datetime.strptime(f"{ev['date']} {ev['time_end']}", "%d.%m.%Y %H:%M"))
+            
+            event.add('dtstart', start_dt)
+            event.add('dtend', end_dt)
+            cal.add_component(event)
         except Exception as e:
-            print(f"⚠️ Ошибка парсинга: {e}")
+            print(f"️ Ошибка создания события: {e}")
             continue
 
     new_ics_data = cal.to_ical()
