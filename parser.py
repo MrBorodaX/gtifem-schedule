@@ -1,7 +1,6 @@
 import asyncio
 import os
 import requests
-import hashlib
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event
@@ -13,99 +12,113 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def send_telegram(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Telegram токены не найдены, пропускаем уведомление.")
+        print("Telegram токены не найдены.")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
-        print("Уведомление в Telegram отправлено.")
     except Exception as e:
-        print(f"Ошибка отправки в Telegram: {e}")
-
-def get_hash(filepath):
-    if not os.path.exists(filepath): return None
-    with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
+        print(f"Ошибка Telegram: {e}")
 
 async def main():
-    print("🚀 Запуск парсера расписания...")
+    print("🚀 Запуск парсера...")
     events_data = []
     
     try:
         async with async_playwright() as p:
-            print("Запускаем браузер...")
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
-            
-            print("Переход на сайт...")
             await page.goto("https://gtifem.ru/dekanat/raspisanie/", timeout=30000)
             await page.wait_for_load_state("networkidle")
             
-            # Параметры для выбора (замените на реальные, если нужно)
+            # Настройки (замените на ваши реальные, если отличаются)
             targets = ["Бакалавриат", "Экономика", "1 курс", "1001", "Сентябрь"]
             for text in targets:
                 try:
-                    # Ищем элемент по тексту и кликаем
                     await page.get_by_text(text, exact=True).first.click()
-                    await page.wait_for_timeout(800) # Ждем реакции сайта
+                    await page.wait_for_timeout(800)
                     print(f"✅ Выбрано: {text}")
                 except Exception as e:
                     print(f"⚠️ Не удалось выбрать '{text}': {e}")
             
-            print("Ожидаем появления таблицы расписания...")
-            try:
-                # Ждем любую таблицу на странице
-                await page.wait_for_selector("table", timeout=15000)
-                print("✅ Таблица найдена!")
-            except Exception as e:
-                print("❌ Таблица не найдена за 15 секунд. Возможно, сайт изменил структуру или заблокировал запрос.")
-            
+            await page.wait_for_selector("table", timeout=15000)
             html = await page.content()
             await browser.close()
-            
     except Exception as e:
-        print(f"❌ Критическая ошибка Playwright: {e}")
+        print(f"❌ Ошибка Playwright: {e}")
         send_telegram(f"❌ Ошибка парсера:\n{e}")
-        return # Прерываем выполнение, чтобы не создавать пустой ICS
-
-    print("Анализируем HTML...")
-    soup = BeautifulSoup(html, 'html.parser')
-    
-    # Ищем все строки таблицы
-    rows = soup.find_all('tr')
-    print(f"Найдено строк <tr>: {len(rows)}")
-    
-    for row in rows:
-        cells = row.find_all(['td', 'th'])
-        # В расписании обычно минимум 4-5 ячеек: Дата, Время, Предмет, Аудитория, Преподаватель
-        if len(cells) >= 4:
-            date_str = cells[0].get_text(strip=True)
-            time_str = cells[1].get_text(strip=True)
-            subject = cells[2].get_text(strip=True)
-            
-            # Определяем, где аудитория, а где преподаватель (зависит от верстки сайта)
-            # Обычно: [Дата, Время, Предмет, Аудитория, Преподаватель] или наоборот
-            room = cells[3].get_text(strip=True) if len(cells) > 3 else "Не указано"
-            teacher = cells[4].get_text(strip=True) if len(cells) > 4 else "Не указано"
-            
-            # Фильтруем заголовки и пустые строки
-            if not date_str or "Дата" in date_str or subject in [". .", "", "День знаний"]:
-                continue
-                
-            events_data.append({
-                "date": date_str, 
-                "time": time_str, 
-                "subject": subject, 
-                "room": room, 
-                "teacher": teacher
-            })
-
-    print(f"📊 Извлечено пар: {len(events_data)}")
-
-    if not events_data:
-        send_telegram("⚠️ Парсер не нашел ни одной пары. Проверьте логи GitHub Actions.")
+        # Создаем пустой ICS, чтобы workflow не упал
+        with open('schedule.ics', 'wb') as f:
+            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    # Создаем ICS файл
+    soup = BeautifulSoup(html, 'html.parser')
+    table = soup.find('table')
+    
+    if not table:
+        print("❌ Таблица не найдена в HTML")
+        with open('schedule.ics', 'wb') as f:
+            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
+        return
+
+    rows = table.find_all('tr')
+    print(f"🔍 Найдено строк в таблице: {len(rows)}")
+    
+    # 1. Парсим заголовки (даты)
+    headers = [th.get_text(strip=True) for th in rows[0].find_all(['th', 'td'])]
+    print(f"📌 Заголовки колонок: {headers}")
+    
+    date_cols = []
+    for i, h in enumerate(headers):
+        # Ищем колонки, в названии которых есть месяц
+        if any(m in h for m in ['сентября', 'октября', 'ноября', 'декабря', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня']):
+            date_cols.append((i, h))
+    
+    print(f"📅 Найдены колонки с датами: {date_cols}")
+
+    # 2. Парсим матрицу: ищем строку с аудиториями (содержит "а." или ". .")
+    for row_idx, row in enumerate(rows):
+        cells = row.find_all(['td', 'th'])
+        cell_texts = [c.get_text(strip=True) for c in cells]
+        
+        # Если это строка аудиторий (проверяем со 2-й ячейки, т.к. первая - это время)
+        if len(cell_texts) > 1 and any("а." in text or text == ". ." for text in cell_texts[1:]):
+            if row_idx > 0 and row_idx < len(rows) - 1:
+                prev_cells = rows[row_idx - 1].find_all(['td', 'th']) # Строка с предметами
+                next_cells = rows[row_idx + 1].find_all(['td', 'th']) # Строка с преподавателями
+                
+                # Время берем из текущей или предыдущей строки (первая колонка)
+                time_text = cells[0].get_text(strip=True)
+                if "-" not in time_text:
+                    time_text = prev_cells[0].get_text(strip=True)
+                
+                for col_idx, (date_idx, date_name) in enumerate(date_cols):
+                    target_idx = col_idx + 1 # +1, так как 0-я колонка это время
+                    
+                    if target_idx < len(cells) and target_idx < len(prev_cells) and target_idx < len(next_cells):
+                        subject = prev_cells[target_idx].get_text(strip=True)
+                        room = cells[target_idx].get_text(strip=True)
+                        teacher = next_cells[target_idx].get_text(strip=True)
+                        
+                        # Игнорируем пустые ячейки или ". ."
+                        if subject and subject not in [". .", ""] and room not in [". .", ""]:
+                            events_data.append({
+                                "date": date_name,
+                                "time": time_text,
+                                "subject": subject,
+                                "room": room,
+                                "teacher": teacher
+                            })
+
+    print(f"📊 Успешно извлечено пар: {len(events_data)}")
+    
+    if not events_data:
+        print("⚠️ Пары не найдены. Проверьте логи выше.")
+        send_telegram("⚠️ Парсер не нашел пары. Проверьте логи GitHub Actions.")
+    else:
+        send_telegram(f"✅ Парсер успешно отработал!\nНайдено пар: {len(events_data)}")
+
+    # 3. Создаем ICS файл
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
@@ -113,7 +126,7 @@ async def main():
     
     month_map = {
         'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
-        'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05'
+        'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06'
     }
     
     for ev in events_data:
@@ -123,20 +136,18 @@ async def main():
             event.add('location', ev['room'])
             event.add('description', ev['teacher'])
             
-            # Парсинг даты (например: "1 сентября" -> "01.09.2026")
             parts = ev['date'].split()
             if len(parts) >= 2:
                 day = parts[0].zfill(2)
                 month_name = parts[1].lower()
                 month = month_map.get(month_name, '09')
-                date_fmt = f"{day}.{month}.2026" # Используем 2026 год
+                date_fmt = f"{day}.{month}.2026"
                 
-                # Парсинг времени (например: "09:30 - 11:10")
                 time_clean = ev['time'].replace(' ', '').replace('\n', '')
                 if '-' in time_clean:
                     t_start, t_end = time_clean.split('-')
                 else:
-                    continue # Пропускаем, если время не распарсилось
+                    continue
                 
                 start_dt = tz.localize(datetime.strptime(f"{date_fmt} {t_start}", "%d.%m.%Y %H:%M"))
                 end_dt = tz.localize(datetime.strptime(f"{date_fmt} {t_end}", "%d.%m.%Y %H:%M"))
@@ -148,12 +159,9 @@ async def main():
             print(f"⚠️ Ошибка парсинга строки {ev}: {e}")
             continue
 
-    # Сохраняем файл
     with open('schedule.ics', 'wb') as f:
         f.write(cal.to_ical())
-    print("💾 Файл schedule.ics успешно создан.")
-    
-    send_telegram(f"✅ Расписание успешно обновлено!\nНайдено и добавлено пар: {len(events_data)}")
+    print("💾 Файл schedule.ics успешно создан и готов к коммиту.")
 
 if __name__ == "__main__":
     asyncio.run(main())
