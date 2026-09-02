@@ -2,6 +2,7 @@ import asyncio
 import os
 import requests
 import hashlib
+import re
 from datetime import datetime
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
@@ -40,34 +41,31 @@ def get_file_hash(filepath):
     if not os.path.exists(filepath): return None
     with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
 
-async def select_bitrix_dropdown(page, section_class, value_text):
-    """Специальный метод для кастомных дропдаунов Bitrix"""
+async def js_click(page, text):
+    """Агрессивный клик через JS, обходит любые проверки видимости"""
     try:
-        # 1. Находим секцию дропдауна
-        section = page.locator(f".section.{section_class}").first
-        
-        # 2. Кликаем по заголовку, чтобы раскрыть список
-        await section.locator(".title").first.click()
-        await page.wait_for_timeout(400)
-        
-        # 3. Ищем ссылку с нужным текстом внутри ul li и кликаем по ней
-        await section.locator(f"ul li a:has-text('{value_text}')").first.click()
-        await page.wait_for_timeout(800)
-        print(f"✅ Выбрано: {value_text}")
-    except Exception as e:
-        print(f"⚠️ Ошибка выбора {section_class} '{value_text}': {e}")
-        # Fallback: пробуем обычный JS клик, если структура изменилась
-        try:
-            await page.evaluate(f"""
-                () => {{
-                    const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{value_text}');
-                    if (el) {{ el.scrollIntoView(); el.click(); }}
+        result = await page.evaluate(f"""
+            () => {{
+                const target = '{text}';
+                // Ищем все элементы с точным совпадением текста
+                const elements = Array.from(document.querySelectorAll('*'));
+                const match = elements.find(el => el.textContent.trim() === target);
+                
+                if (match) {{
+                    match.scrollIntoView({{block: 'center', inline: 'center'}});
+                    // Диспатчим реальное событие клика
+                    match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+                    return true;
                 }}
-            """)
-            await page.wait_for_timeout(800)
-            print(f"✅ Выбрано (fallback): {value_text}")
-        except:
-            pass
+                return false;
+            }}
+        """)
+        if result:
+            print(f"✅ Выбрано (JS click): {text}")
+        else:
+            print(f"⚠️ Элемент '{text}' не найден для клика")
+    except Exception as e:
+        print(f"⚠️ Ошибка JS клика для '{text}': {e}")
 
 async def main():
     print("🚀 Запуск умного парсера...")
@@ -83,77 +81,27 @@ async def main():
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
-            
-            # Переходим на сайт
             await page.goto("https://gtifem.ru/dekanat/raspisanie/", timeout=30000)
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # 1. Закрываем баннер cookie, если он есть
-            try:
-                await page.get_by_role("button", name="Принять").click(timeout=3000)
-                print("✅ Баннер cookie закрыт")
-                await page.wait_for_timeout(1000)
-            except:
-                print("ℹ️ Баннер cookie не найден или уже закрыт")
+            # 1. Принудительно удаляем баннер cookie и любые модальные окна из DOM
+            await page.evaluate("""
+                () => {
+                    document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
+                }
+            """)
+            print("✅ Баннеры и модальные окна удалены")
+            await page.wait_for_timeout(1000)
             
-            # 2. Последовательно выбираем параметры через специфичные для Bitrix селекторы
-            # Отделение и Направление часто не имеют явных class="section", поэтому для них используем fallback или общие селекторы
-            print("Выбираем параметры...")
+            # 2. Последовательно выбираем параметры через JS-клик
+            targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
+            for text in targets:
+                await js_click(page, text)
+                await page.wait_for_timeout(1200)  # Пауза между кликами для срабатывания AJAX
             
-            # Попробуем найти секции по порядку
-            sections = await page.locator(".section").all()
-            print(f"Найдено секций .section: {len(sections)}")
-            
-            # Если секции есть, используем их. Если нет, используем универсальный метод
-            if len(sections) >= 2:
-                # Предполагаем, что порядок: 0-отделение, 1-направление, 2-курс, 3-группа, 4-месяц
-                # Но лучше искать по содержимому заголовка
-                targets = [
-                    ("groups", GROUP),
-                    ("months", current_month)
-                ]
-                for sec_class, val in targets:
-                    await select_bitrix_dropdown(page, sec_class, val)
-                
-                # Для отделения, направления и курса попробуем универсальный клик, если они не в .section
-                for text in [DEPARTMENT, MAJOR, COURSE]:
-                    try:
-                        await page.evaluate(f"""
-                            () => {{
-                                const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{text}');
-                                if (el) {{ el.scrollIntoView({{block: 'center'}}); el.click(); }}
-                            }}
-                        """)
-                        await page.wait_for_timeout(600)
-                        print(f"✅ Выбрано: {text}")
-                    except:
-                        pass
-            else:
-                # Если секций нет, используем только универсальный метод для всех
-                for text in [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]:
-                    try:
-                        await page.evaluate(f"""
-                            () => {{
-                                const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{text}');
-                                if (el) {{ el.scrollIntoView({{block: 'center'}}); el.click(); }}
-                            }}
-                        """)
-                        await page.wait_for_timeout(800)
-                        print(f"✅ Выбрано: {text}")
-                    except:
-                        pass
-
             print("⏳ Ожидаем загрузки таблицы расписания...")
-            # Ждем появления таблицы в DOM (state='attached' означает, что элемент добавлен в DOM, даже если скрыт)
-            try:
-                await page.wait_for_selector("table", state="attached", timeout=15000)
-                print("✅ Таблица найдена в DOM!")
-            except:
-                print("⚠️ Таблица <table> не появилась за 15 секунд.")
-            
-            # Даем дополнительное время на отрисовку и AJAX
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(4000)  # Дополнительное время на отрисовку
             
             html = await page.content()
             await browser.close()
@@ -164,21 +112,28 @@ async def main():
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    # Проверяем, загрузилось ли расписание
+    # 3. Проверка: загрузилось ли расписание
     if GROUP not in html and "Основы российской государственности" not in html:
         print("❌ Расписание не загрузилось. Группа или предметы не найдены в HTML.")
-        # Сохраняем скриншот и HTML для отладки прямо в репозиторий
+        
+        # Сохраняем debug.html (теперь workflow его закоммитит!)
         with open('debug.html', 'w', encoding='utf-8') as f:
             f.write(html)
-        print("💾 Файл debug.html сохранен в репозитории для анализа.")
+        print("💾 Файл debug.html создан и будет сохранен в репозитории.")
+        
+        # Также выводим начало body в консоль, чтобы вы могли скопировать его прямо отсюда
+        soup = BeautifulSoup(html, 'html.parser')
+        body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
+        print(f"🔍 ФРАГМЕНТ ТЕКСТА СТРАНИЦЫ (первые 1000 символов):\n{body_text[:1000]}")
+        
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    print("✅ Данные расписания найдены в HTML!")
+    print("✅ Данные расписания успешно найдены в HTML!")
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Ищем ячейки с data-group или просто все ячейки в таблице
+    # Ищем ячейки расписания
     table = soup.find('table')
     if table:
         schedule_cells = table.find_all('td', attrs={'data-group': True})
@@ -187,7 +142,7 @@ async def main():
     else:
         schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'group' in c.lower()))
 
-    print(f"🔍 Найдено потенциальных ячеек расписания: {len(schedule_cells)}")
+    print(f"🔍 Найдено потенциальных ячеек: {len(schedule_cells)}")
     
     for cell in schedule_cells:
         try:
@@ -215,7 +170,6 @@ async def main():
             if not subject or subject in [". .", ""]:
                 continue
             
-            import re
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) == 2:
                 t_start, t_end = time_parts[0], time_parts[1]
@@ -292,4 +246,3 @@ async def main():
         send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
