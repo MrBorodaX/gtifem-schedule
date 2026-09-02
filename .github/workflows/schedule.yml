@@ -9,7 +9,7 @@ jobs:
   parse:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Важно: даем права на запись в репозиторий
+      contents: write
     steps:
     - uses: actions/checkout@v4
     
@@ -34,14 +34,15 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # ГАРАНТИЯ: создаем файл, если его вдруг нет, чтобы git add не падал
+        touch schedule.ics
         git add schedule.ics
         
-        # Проверяем, есть ли изменения, чтобы не делать пустых коммитов
         if git diff --staged --quiet; then
           echo "Изменений в расписании нет, пропускаем коммит."
         else
           echo "Найдены изменения, сохраняем..."
           git commit -m "chore: update schedule.ics"
-          # Безопасный пуш в текущую ветку
           git push origin HEAD:$(git branch --show-current)
         fi
