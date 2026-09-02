@@ -4,6 +4,7 @@ import requests
 import hashlib
 import re
 from datetime import datetime
+from collections import defaultdict
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event
@@ -19,18 +20,30 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 def send_telegram(message):
+    """Отправка уведомления в Telegram с отладкой"""
+    print(f"📤 Попытка отправить в Telegram: {TELEGRAM_BOT_TOKEN[:10] if TELEGRAM_BOT_TOKEN else 'None'}... / {TELEGRAM_CHAT_ID}")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
+        print(" Telegram токены не настроены!")
+        return False
+    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
+    
     try:
-        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
+        response = requests.post(url, data=data, timeout=10)
+        if response.status_code == 200:
+            print("✅ Уведомление отправлено успешно")
+            return True
+        else:
+            print(f" Ошибка Telegram API: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
-        print(f"Ошибка Telegram: {e}")
+        print(f"❌ Ошибка отправки: {e}")
+        return False
 
 def get_current_month_and_year():
     now = datetime.now()
     month_num = now.month
-    # Именительный падеж (как в выпадающем списке на сайте)
     months_ui = {
         1: "январь", 2: "февраль", 3: "март", 4: "апрель", 5: "май", 6: "июнь",
         9: "сентябрь", 10: "октябрь", 11: "ноябрь", 12: "декабрь"
@@ -45,19 +58,29 @@ def get_file_hash(filepath):
     with open(filepath, 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()
 
+def parse_subject_name(subject_full):
+    """
+    Парсит название предмета и тип занятия
+    Пример: "Основы российской государственности (лек)" → ("Основы российской государственности", "ЛЕК")
+    """
+    match = re.search(r'\((лек|пр|лаб)\)', subject_full, re.IGNORECASE)
+    if match:
+        subject_type = match.group(1).upper()
+        subject_name = subject_full[:match.start()].strip()
+        return subject_name, subject_type
+    return subject_full, ""
+
 async def js_click_by_text(page, text):
-    """Клик через чистый JS - обходит все проверки видимости"""
+    """Клик через чистый JS"""
     try:
         result = await page.evaluate("""
             (target) => {
                 const elements = Array.from(document.querySelectorAll('a'));
-                // Ищем видимый элемент (регистронезависимо)
                 const match = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase() && el.offsetParent !== null);
                 if (match) {
                     match.click();
                     return true;
                 }
-                // Если не нашли видимый, ищем любой
                 const anyMatch = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase());
                 if (anyMatch) {
                     anyMatch.click();
@@ -76,7 +99,7 @@ async def js_click_by_text(page, text):
         return False
 
 async def wait_for_visible_elements(page, selector, timeout=10000):
-    """Ждет появления видимых элементов внутри селектора"""
+    """Ждет появления видимых элементов"""
     try:
         await page.wait_for_function("""
             (sel) => {
@@ -89,7 +112,7 @@ async def wait_for_visible_elements(page, selector, timeout=10000):
         return False
 
 async def main():
-    print("🚀 Запуск умного парсера...")
+    print(" Запуск умного парсера...")
     
     current_month_ui, current_year = get_current_month_and_year()
     print(f"📅 Парсим месяц: {current_month_ui} {current_year} года")
@@ -106,7 +129,6 @@ async def main():
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # Удаляем баннер cookie
             await page.evaluate("""
                 () => {
                     document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
@@ -114,33 +136,28 @@ async def main():
             """)
             print("✅ Баннеры удалены")
             
-            # 1. Бакалавриат
             print("Выбираем отделение...")
             await js_click_by_text(page, DEPARTMENT)
             await page.wait_for_timeout(1500)
             
-            # 2. Логистика
             print("Выбираем направление...")
             await js_click_by_text(page, MAJOR)
             await wait_for_visible_elements(page, ".section.courses ul li a", timeout=10000)
             print("✅ Курсы загружены")
             await page.wait_for_timeout(1500)
             
-            # 3. 1 курс
             print("Выбираем курс...")
             await js_click_by_text(page, COURSE)
             await wait_for_visible_elements(page, ".section.groups ul li a", timeout=10000)
             print("✅ Группы загружены")
             await page.wait_for_timeout(1500)
             
-            # 4. 6661
             print("Выбираем группу...")
             await js_click_by_text(page, GROUP)
             await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000)
             print("✅ Месяцы загружены")
             await page.wait_for_timeout(1500)
             
-            # 5. сентябрь (теперь скрипт найдет именно "сентябрь", а не "сентября")
             print(f"Выбираем месяц: {current_month_ui}...")
             await js_click_by_text(page, current_month_ui)
             await page.wait_for_selector("table", timeout=15000)
@@ -156,7 +173,6 @@ async def main():
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    # Проверяем загрузку
     if GROUP not in html:
         print("❌ Расписание не загрузилось.")
         with open('debug.html', 'w', encoding='utf-8') as f:
@@ -179,6 +195,9 @@ async def main():
     schedule_cells = table.find_all('td', attrs={'data-group': True})
     print(f"🔍 Найдено ячеек: {len(schedule_cells)}")
     
+    # Собираем все события в словарь по датам
+    events_by_date = defaultdict(list)
+    
     for cell in schedule_cells:
         try:
             cell_text = cell.get_text(strip=True)
@@ -189,7 +208,7 @@ async def main():
             subject_div = cell.find('div', class_='subject')
             aud_div = cell.find('div', class_='aud')
             
-            subject = subject_div.get_text(strip=True) if subject_div else ""
+            subject_full = subject_div.get_text(strip=True) if subject_div else ""
             
             room = ""
             if aud_div:
@@ -202,7 +221,7 @@ async def main():
                 if next_div and (not next_div.get('class') or 'number' not in next_div.get('class', [])):
                     teacher = next_div.get_text(strip=True)
             
-            if not subject or subject in [". .", ""]:
+            if not subject_full or subject_full in [". .", ""]:
                 continue
             
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
@@ -216,8 +235,6 @@ async def main():
                     continue
             
             day = int(data_day) if data_day.isdigit() else 1
-            
-            # Словарь теперь понимает оба падежа: "сентябрь" (из HTML) и "сентября" (из Excel/заголовков)
             month_map = {
                 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
                 'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
@@ -227,38 +244,55 @@ async def main():
             month_num = month_map.get(data_month_attr.lower(), '09')
             date_fmt = f"{day:02d}.{month_num}.{current_year}"
             
-            events_data.append({
-                "date": date_fmt,
+            # Парсим название предмета и тип
+            subject_name, subject_type = parse_subject_name(subject_full)
+            
+            events_by_date[date_fmt].append({
                 "time_start": t_start,
                 "time_end": t_end,
-                "subject": subject,
+                "subject_name": subject_name,
+                "subject_type": subject_type,
                 "room": room,
                 "teacher": teacher
             })
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Ошибка парсинга ячейки: {e}")
             continue
-
-    # Удаляем дубликаты
-    unique_events = []
-    seen = set()
-    for ev in events_data:
-        key = (ev['date'], ev['time_start'], ev['subject'])
-        if key not in seen:
-            seen.add(key)
-            unique_events.append(ev)
     
-    events_data = unique_events
-    print(f"📚 Найдено уникальных пар: {len(events_data)}")
+    # Для каждой даты сортируем события по времени и присваиваем номера по порядку
+    final_events = []
+    for date_fmt, day_events in events_by_date.items():
+        # Сортируем по времени начала
+        day_events.sort(key=lambda x: x['time_start'])
+        
+        # Присваиваем номера по порядку (1, 2, 3...)
+        for slot_number, event in enumerate(day_events, start=1):
+            # Формируем название: "1. ЛЕК Основы российской государственности"
+            if event['subject_type']:
+                event_title = f"{slot_number}. {event['subject_type']} {event['subject_name']}"
+            else:
+                event_title = f"{slot_number}. {event['subject_name']}"
+            
+            final_events.append({
+                "date": date_fmt,
+                "time_start": event['time_start'],
+                "time_end": event['time_end'],
+                "title": event_title,
+                "room": event['room'],
+                "teacher": event['teacher']
+            })
+    
+    print(f"📚 Найдено уникальных пар: {len(final_events)}")
 
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
     tz = pytz.timezone('Europe/Moscow')
     
-    for ev in events_data:
+    for ev in final_events:
         try:
             event = Event()
-            event.add('summary', ev['subject'])
+            event.add('summary', ev['title'])
             event.add('location', ev['room'])
             event.add('description', ev['teacher'])
             
@@ -277,11 +311,12 @@ async def main():
     
     if old_hash == new_hash:
         print("✅ Расписание не изменилось.")
+        send_telegram(f"✅ <b>Проверка расписания</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(final_events)}\n\nИзменений нет.")
     else:
         print("🔥 Обнаружены изменения!")
         with open('schedule.ics', 'wb') as f:
             f.write(new_ics_data)
-        send_telegram(f" <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(events_data)}")
+        send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(final_events)}\n\nGoogle Календарь обновится в течение 24 часов.")
 
 if __name__ == "__main__":
     asyncio.run(main())
