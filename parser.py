@@ -40,39 +40,34 @@ def get_file_hash(filepath):
     if not os.path.exists(filepath): return None
     with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
 
-async def select_value(page, text):
-    """Выбор значения через JavaScript с прокруткой"""
+async def select_bitrix_dropdown(page, section_class, value_text):
+    """Специальный метод для кастомных дропдаунов Bitrix"""
     try:
-        result = await page.evaluate(f"""
-            () => {{
-                const targetText = '{text}';
-                const allElements = Array.from(document.querySelectorAll('*'));
-                const matches = allElements.filter(el => 
-                    el.textContent && el.textContent.trim() === targetText
-                );
-                
-                if (matches.length === 0) {{
-                    const partialMatches = allElements.filter(el => 
-                        el.textContent && targetText.toLowerCase().includes(el.textContent.trim().toLowerCase())
-                    );
-                    if (partialMatches.length > 0) {{
-                        partialMatches[0].scrollIntoView({{behavior: 'auto', block: 'center'}});
-                        partialMatches[0].click();
-                        return true;
-                    }}
-                    return false;
-                }}
-                
-                matches[0].scrollIntoView({{behavior: 'auto', block: 'center'}});
-                matches[0].click();
-                return true;
-            }}
-        """)
-        if result:
-            print(f"✅ Выбрано: {text}")
-            await page.wait_for_timeout(800)
+        # 1. Находим секцию дропдауна
+        section = page.locator(f".section.{section_class}").first
+        
+        # 2. Кликаем по заголовку, чтобы раскрыть список
+        await section.locator(".title").first.click()
+        await page.wait_for_timeout(400)
+        
+        # 3. Ищем ссылку с нужным текстом внутри ul li и кликаем по ней
+        await section.locator(f"ul li a:has-text('{value_text}')").first.click()
+        await page.wait_for_timeout(800)
+        print(f"✅ Выбрано: {value_text}")
     except Exception as e:
-        print(f"⚠️ Ошибка при выборе '{text}': {e}")
+        print(f"⚠️ Ошибка выбора {section_class} '{value_text}': {e}")
+        # Fallback: пробуем обычный JS клик, если структура изменилась
+        try:
+            await page.evaluate(f"""
+                () => {{
+                    const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{value_text}');
+                    if (el) {{ el.scrollIntoView(); el.click(); }}
+                }}
+            """)
+            await page.wait_for_timeout(800)
+            print(f"✅ Выбрано (fallback): {value_text}")
+        except:
+            pass
 
 async def main():
     print("🚀 Запуск умного парсера...")
@@ -88,24 +83,83 @@ async def main():
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
+            
+            # Переходим на сайт
             await page.goto("https://gtifem.ru/dekanat/raspisanie/", timeout=30000)
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # Последовательно выбираем все параметры
-            targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
-            for text in targets:
-                await select_value(page, text)
-                await page.wait_for_timeout(1500)  # Увеличенная пауза для AJAX-запроса
+            # 1. Закрываем баннер cookie, если он есть
+            try:
+                await page.get_by_role("button", name="Принять").click(timeout=3000)
+                print("✅ Баннер cookie закрыт")
+                await page.wait_for_timeout(1000)
+            except:
+                print("ℹ️ Баннер cookie не найден или уже закрыт")
             
-            print("⏳ Ожидаем загрузки данных...")
-            await page.wait_for_timeout(4000)  # Ждем 4 секунды после последнего клика
+            # 2. Последовательно выбираем параметры через специфичные для Bitrix селекторы
+            # Отделение и Направление часто не имеют явных class="section", поэтому для них используем fallback или общие селекторы
+            print("Выбираем параметры...")
+            
+            # Попробуем найти секции по порядку
+            sections = await page.locator(".section").all()
+            print(f"Найдено секций .section: {len(sections)}")
+            
+            # Если секции есть, используем их. Если нет, используем универсальный метод
+            if len(sections) >= 2:
+                # Предполагаем, что порядок: 0-отделение, 1-направление, 2-курс, 3-группа, 4-месяц
+                # Но лучше искать по содержимому заголовка
+                targets = [
+                    ("groups", GROUP),
+                    ("months", current_month)
+                ]
+                for sec_class, val in targets:
+                    await select_bitrix_dropdown(page, sec_class, val)
+                
+                # Для отделения, направления и курса попробуем универсальный клик, если они не в .section
+                for text in [DEPARTMENT, MAJOR, COURSE]:
+                    try:
+                        await page.evaluate(f"""
+                            () => {{
+                                const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{text}');
+                                if (el) {{ el.scrollIntoView({{block: 'center'}}); el.click(); }}
+                            }}
+                        """)
+                        await page.wait_for_timeout(600)
+                        print(f"✅ Выбрано: {text}")
+                    except:
+                        pass
+            else:
+                # Если секций нет, используем только универсальный метод для всех
+                for text in [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]:
+                    try:
+                        await page.evaluate(f"""
+                            () => {{
+                                const el = Array.from(document.querySelectorAll('a, li, div')).find(e => e.textContent.trim() === '{text}');
+                                if (el) {{ el.scrollIntoView({{block: 'center'}}); el.click(); }}
+                            }}
+                        """)
+                        await page.wait_for_timeout(800)
+                        print(f"✅ Выбрано: {text}")
+                    except:
+                        pass
+
+            print("⏳ Ожидаем загрузки таблицы расписания...")
+            # Ждем появления таблицы в DOM (state='attached' означает, что элемент добавлен в DOM, даже если скрыт)
+            try:
+                await page.wait_for_selector("table", state="attached", timeout=15000)
+                print("✅ Таблица найдена в DOM!")
+            except:
+                print("⚠️ Таблица <table> не появилась за 15 секунд.")
+            
+            # Даем дополнительное время на отрисовку и AJAX
+            await page.wait_for_timeout(3000)
             
             html = await page.content()
             await browser.close()
             
     except Exception as e:
-        print(f"❌ Ошибка браузера: {e}")
+        print(f"❌ Критическая ошибка браузера: {e}")
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
@@ -113,7 +167,10 @@ async def main():
     # Проверяем, загрузилось ли расписание
     if GROUP not in html and "Основы российской государственности" not in html:
         print("❌ Расписание не загрузилось. Группа или предметы не найдены в HTML.")
-        print("Фрагмент HTML (последние 500 символов):", html[-500:])
+        # Сохраняем скриншот и HTML для отладки прямо в репозиторий
+        with open('debug.html', 'w', encoding='utf-8') as f:
+            f.write(html)
+        print("💾 Файл debug.html сохранен в репозитории для анализа.")
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
@@ -121,34 +178,24 @@ async def main():
     print("✅ Данные расписания найдены в HTML!")
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Попытка 1: Ищем таблицу (как в большинстве случаев)
+    # Ищем ячейки с data-group или просто все ячейки в таблице
     table = soup.find('table')
     if table:
-        print("📊 Найдена таблица <table>")
         schedule_cells = table.find_all('td', attrs={'data-group': True})
         if not schedule_cells:
-            # Если data-group нет, ищем все td внутри таблицы
             schedule_cells = table.find_all('td')
     else:
-        print("⚠️ Таблица <table> не найдена, ищем в div'ах...")
-        schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'raspisanie' in c.lower() or 'group' in c.lower()))
+        schedule_cells = soup.find_all('div', class_=lambda c: c and ('schedule' in c.lower() or 'group' in c.lower()))
 
     print(f"🔍 Найдено потенциальных ячеек расписания: {len(schedule_cells)}")
     
     for cell in schedule_cells:
         try:
-            # Проверяем, относится ли ячейка к нашей группе
             cell_text = cell.get_text(strip=True)
-            if GROUP not in cell.get('data-group', '') and GROUP not in cell_text:
-                # Если это не наша группа, пропускаем (но для матричной структуры проверяем иначе)
-                pass 
-            
-            # Извлекаем данные из атрибутов (если есть)
             data_day = cell.get('data-day', '')
             data_time = cell.get('data-time', '')
             data_month_attr = cell.get('data-month', current_month)
             
-            # Если это матричная структура (как в Excel), ищем по классам
             subject_div = cell.find('div', class_='subject')
             aud_div = cell.find('div', class_='aud')
             
@@ -168,13 +215,11 @@ async def main():
             if not subject or subject in [". .", ""]:
                 continue
             
-            # Парсим время
+            import re
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) == 2:
                 t_start, t_end = time_parts[0], time_parts[1]
             else:
-                # Если времени нет в data-time, пытаемся найти его в тексте ячейки
-                import re
                 time_match = re.search(r'(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})', cell_text)
                 if time_match:
                     t_start, t_end = time_match.groups()
@@ -197,10 +242,10 @@ async def main():
                 "room": room,
                 "teacher": teacher
             })
-        except Exception as e:
+        except Exception:
             continue
 
-    # Удаляем дубликаты (иногда парсер находит одно и то же несколько раз)
+    # Удаляем дубликаты
     unique_events = []
     seen = set()
     for ev in events_data:
