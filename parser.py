@@ -44,6 +44,37 @@ def get_file_hash(filepath):
     with open(filepath, 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()
 
+async def pure_js_click(page, text):
+    """
+    Абсолютно надежный клик через чистый JS. 
+    Playwright не проверяет видимость элемента, мы просто находим его в DOM и эмулируем событие.
+    """
+    try:
+        result = await page.evaluate(f"""
+            () => {{
+                const targetText = '{text}';
+                // Ищем все элементы и находим тот, у которого текст точно совпадает
+                const elements = Array.from(document.querySelectorAll('a, li, div, span'));
+                const match = elements.find(el => el.textContent.trim() === targetText);
+                
+                if (match) {{
+                    match.scrollIntoView({{block: 'center', inline: 'center'}});
+                    // Эмулируем реальный клик мыши, который понимает Bitrix
+                    match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+                    return true;
+                }}
+                return false;
+            }}
+        """)
+        if result:
+            print(f"✅ JS Клик выполнен: {text}")
+        else:
+            print(f"⚠️ Элемент '{text}' не найден в DOM")
+        return result
+    except Exception as e:
+        print(f"❌ Ошибка JS клика для '{text}': {e}")
+        return False
+
 async def main():
     print("🚀 Запуск умного парсера...")
     
@@ -62,99 +93,94 @@ async def main():
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # Удаляем баннер cookie
-            try:
-                await page.evaluate("""
-                    () => {
-                        document.querySelectorAll('.sc-widget, .cookie-banner').forEach(el => el.remove());
-                    }
-                """)
-                print("✅ Баннер cookie удален")
-            except:
-                pass
+            # Удаляем баннер cookie, чтобы он не перекрывал клики
+            await page.evaluate("""
+                () => {
+                    document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
+                }
+            """)
+            print("✅ Баннеры удалены")
             
-            # ШАГ 1: Кликаем по "Бакалавриат" (он виден сразу)
+            # ПОШАГОВЫЙ ВЫБОР С ЯВНЫМ ОЖИДАНИЕМ ПОЯВЛЕНИЯ СЛЕДУЮЩЕГО БЛОКА
+            
+            # 1. Бакалавриат
             print("Выбираем отделение...")
-            await page.click("text=Бакалавриат", timeout=10000)
-            await page.wait_for_timeout(1500)
-            print("✅ Бакалавриат выбран")
+            await pure_js_click(page, DEPARTMENT)
+            await page.wait_for_timeout(1500) # Ждем AJAX
             
-            # ШАГ 2: Ждем появления секции "Направление" и кликаем по "Логистика"
+            # 2. Логистика
             print("Выбираем направление...")
-            await page.wait_for_selector(".section.specials", state="visible", timeout=10000)
-            await page.click("text=Логистика", timeout=10000)
-            await page.wait_for_timeout(1500)
-            print("✅ Логистика выбрана")
-            
-            # ШАГ 3: Ждем появления секции "Курс" и кликаем по "1 курс"
-            print("Выбираем курс...")
+            await pure_js_click(page, MAJOR)
+            # ВАЖНО: Ждем, пока блок курсов реально станет видимым после AJAX
             await page.wait_for_selector(".section.courses", state="visible", timeout=10000)
-            # Для курса нужно кликнуть по первому "1 курс" в видимой секции
-            await page.locator(".section.courses a:has-text('1 курс')").first.click(timeout=10000)
+            print("✅ Блок курсов появился")
             await page.wait_for_timeout(1500)
-            print("✅ 1 курс выбран")
             
-            # ШАГ 4: Ждем появления секции "Группа" и заполнения списка
-            print("Выбираем группу...")
+            # 3. 1 курс
+            print("Выбираем курс...")
+            await pure_js_click(page, COURSE)
+            # Ждем появления блока групп
             await page.wait_for_selector(".section.groups", state="visible", timeout=10000)
-            # Ждем, пока список групп заполнится
-            await page.wait_for_selector(".section.groups ul li", timeout=10000)
-            await page.wait_for_timeout(1000)
-            # Кликаем по группе 6661
-            await page.click("text=6661", timeout=10000)
+            print("✅ Блок групп появился")
             await page.wait_for_timeout(1500)
-            print("✅ Группа 6661 выбрана")
             
-            # ШАГ 5: Ждем появления секции "Месяц" и кликаем по нужному месяцу
-            print("Выбираем месяц...")
+            # 4. 6661
+            print("Выбираем группу...")
+            await pure_js_click(page, GROUP)
+            # Ждем появления блока месяцев
             await page.wait_for_selector(".section.months", state="visible", timeout=10000)
-            await page.wait_for_selector(".section.months ul li", timeout=10000)
-            await page.wait_for_timeout(1000)
-            # Кликаем по месяцу (например, "сентября")
-            await page.click(f"text={current_month}", timeout=10000)
+            print("✅ Блок месяцев появился")
             await page.wait_for_timeout(1500)
-            print(f"✅ {current_month} выбран")
             
-            # ШАГ 6: Ждем появления таблицы расписания
-            print("⏳ Ожидаем загрузки таблицы...")
-            await page.wait_for_selector("table", timeout=15000)
-            await page.wait_for_timeout(3000)  # Дополнительное время на полную отрисовку
+            # 5. сентября
+            print(f"Выбираем месяц: {current_month}...")
+            await pure_js_click(page, current_month)
+            # Ждем появления самой таблицы расписания
+            await page.wait_for_selector(".table table, table", timeout=15000)
+            print("✅ Таблица расписания появилась")
+            
+            # Дополнительное время на полную отрисовку всех ячеек
+            await page.wait_for_timeout(3000)
             
             html = await page.content()
             await browser.close()
             
     except Exception as e:
-        print(f" Ошибка: {e}")
-        with open('debug.html', 'w', encoding='utf-8') as f:
-            f.write(html if html else "")
+        print(f"❌ Критическая ошибка браузера: {e}")
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    # Проверяем загрузку
+    # Проверяем, загрузилось ли расписание
     if GROUP not in html:
-        print("❌ Расписание не загрузилось.")
+        print("❌ Расписание не загрузилось. Группа не найдена в HTML.")
         with open('debug.html', 'w', encoding='utf-8') as f:
             f.write(html)
+        print("💾 Файл debug.html сохранен в репозитории.")
+        
         soup = BeautifulSoup(html, 'html.parser')
         body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
-        print(f"🔍 ТЕКСТ:\n{body_text[:1000]}")
+        print(f"🔍 ТЕКСТ СТРАНИЦЫ (фрагмент):\n{body_text[:1000]}")
+        
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
-    print("✅ Данные найдены!")
+    print("✅ Данные расписания успешно найдены!")
     soup = BeautifulSoup(html, 'html.parser')
     
+    # Ищем таблицу расписания
     table = soup.find('table')
-    if table:
-        schedule_cells = table.find_all('td', attrs={'data-group': True})
-        if not schedule_cells:
-            schedule_cells = table.find_all('td')
-    else:
-        schedule_cells = []
-
-    print(f"🔍 Найдено ячеек: {len(schedule_cells)}")
+    if not table:
+        print("❌ Таблица <table> не найдена в HTML")
+        return
+    
+    # Ищем ячейки, относящиеся к нашей группе
+    schedule_cells = table.find_all('td', attrs={'data-group': True})
+    if not schedule_cells:
+        schedule_cells = table.find_all('td')
+        
+    print(f"🔍 Найдено потенциальных ячеек: {len(schedule_cells)}")
     
     for cell in schedule_cells:
         try:
@@ -182,6 +208,7 @@ async def main():
             if not subject or subject in [". .", ""]:
                 continue
             
+            # Парсинг времени
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) == 2:
                 t_start, t_end = time_parts[0], time_parts[1]
@@ -223,6 +250,7 @@ async def main():
     events_data = unique_events
     print(f"📚 Найдено уникальных пар: {len(events_data)}")
 
+    # Создаем ICS файл
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
@@ -242,7 +270,7 @@ async def main():
             event.add('dtend', end_dt)
             cal.add_component(event)
         except Exception as e:
-            print(f"⚠️ Ошибка: {e}")
+            print(f"⚠️ Ошибка создания события: {e}")
             continue
 
     new_ics_data = cal.to_ical()
@@ -251,7 +279,7 @@ async def main():
     if old_hash == new_hash:
         print("✅ Расписание не изменилось.")
     else:
-        print(" Обнаружены изменения!")
+        print("🔥 Обнаружены изменения!")
         with open('schedule.ics', 'wb') as f:
             f.write(new_ics_data)
         send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
