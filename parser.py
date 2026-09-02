@@ -277,11 +277,20 @@ async def main():
     month_names = ", ".join([f"{m} {y}" for m, y in months_info])
     print(f"📅 Парсим семестр: {month_names}")
     
+    # ✅ ИСПРАВЛЕННАЯ ЗАГРУЗКА JSON С ЗАЩИТОЙ ОТ ПУСТЫХ/ПОВРЕЖДЕННЫХ ФАЙЛОВ
     old_events = []
     if os.path.exists('schedule.json'):
-        with open('schedule.json', 'r', encoding='utf-8') as f:
-            old_events = json.load(f)
-        print(f"💾 Загружено старое расписание: {len(old_events)} пар")
+        try:
+            with open('schedule.json', 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if content:
+                    old_events = json.loads(content)
+                    print(f"💾 Загружено старое расписание: {len(old_events)} пар")
+                else:
+                    print("⚠️ Файл schedule.json пустой, считаем первый запуск")
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ Ошибка чтения schedule.json: {e}, считаем первый запуск")
+            old_events = []
     else:
         print("🆕 Это первый запуск, старого расписания нет.")
     
@@ -348,17 +357,15 @@ async def main():
     
     new_ics_data = cal.to_ical()
     
-    # Сравниваем со старым расписанием
     added, removed, changed = get_diff(old_events, all_events)
     
-    # 🛡️ АНТИ-СПАМ ФИЛЬТР
     is_full_update = False
     if len(all_events) > 0 and len(added) > len(all_events) * 0.5:
         is_full_update = True
     if len(old_events) > 0 and len(removed) > len(old_events) * 0.5:
         is_full_update = True
     
-    # ✅ ВСЕГДА сохраняем файлы (и ICS, и JSON), чтобы в следующий раз было с чем сравнивать
+    # ✅ ВСЕГДА сохраняем файлы
     with open('schedule.ics', 'wb') as f:
         f.write(new_ics_data)
     with open('schedule.json', 'w', encoding='utf-8') as f:
@@ -366,18 +373,15 @@ async def main():
     print("💾 Файлы schedule.ics и schedule.json сохранены")
     
     if is_full_update:
-        # Полное обновление — короткое уведомление
         month_names_short = ", ".join([m.capitalize() for m, y in months_info[:3]])
         if len(months_info) > 3:
             month_names_short += f" и др."
         msg = f"🔄 <b>Расписание полностью обновлено ({month_names_short})</b>\n\nГруппа: {GROUP}\nВсего пар в календаре: {len(all_events)}\n\nGoogle Календарь обновится в течение 24 часов."
         send_telegram(msg)
     elif added or removed or changed:
-        # Есть конкретные изменения — подробное уведомление
         msg = format_telegram_message(added, removed, changed, months_info)
         send_telegram(msg)
     else:
-        # Изменений нет — молчим (или можно отправить короткое "всё ок")
         print("✅ Изменений не найдено. Уведомление не отправляем.")
 
 if __name__ == "__main__":
