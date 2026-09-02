@@ -44,36 +44,19 @@ def get_file_hash(filepath):
     with open(filepath, 'rb') as f:
         return hashlib.md5(f.read()).hexdigest()
 
-async def pure_js_click(page, text):
-    """
-    Абсолютно надежный клик через чистый JS. 
-    Playwright не проверяет видимость элемента, мы просто находим его в DOM и эмулируем событие.
-    """
+async def select_bitrix_option(page, section_selector, option_text):
+    """Точная имитация выбора в кастомном дропдауне Bitrix"""
     try:
-        result = await page.evaluate(f"""
-            () => {{
-                const targetText = '{text}';
-                // Ищем все элементы и находим тот, у которого текст точно совпадает
-                const elements = Array.from(document.querySelectorAll('a, li, div, span'));
-                const match = elements.find(el => el.textContent.trim() === targetText);
-                
-                if (match) {{
-                    match.scrollIntoView({{block: 'center', inline: 'center'}});
-                    // Эмулируем реальный клик мыши, который понимает Bitrix
-                    match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
-                    return true;
-                }}
-                return false;
-            }}
-        """)
-        if result:
-            print(f"✅ JS Клик выполнен: {text}")
-        else:
-            print(f"⚠️ Элемент '{text}' не найден в DOM")
-        return result
+        # 1. Кликаем по заголовку, чтобы раскрыть список
+        await page.locator(f"{section_selector} .title").first.click()
+        await page.wait_for_timeout(600)
+        
+        # 2. Ищем ссылку <a> внутри <li> этого конкретного блока и кликаем по ней
+        await page.locator(f"{section_selector} ul li a").get_by_text(option_text, exact=True).first.click()
+        await page.wait_for_timeout(1200)
+        print(f"✅ Выбрано: {option_text}")
     except Exception as e:
-        print(f"❌ Ошибка JS клика для '{text}': {e}")
-        return False
+        print(f"⚠️ Ошибка выбора '{option_text}' в {section_selector}: {e}")
 
 async def main():
     print("🚀 Запуск умного парсера...")
@@ -93,7 +76,7 @@ async def main():
             await page.wait_for_load_state("networkidle")
             await page.wait_for_timeout(2000)
             
-            # Удаляем баннер cookie, чтобы он не перекрывал клики
+            # Удаляем баннер cookie
             await page.evaluate("""
                 () => {
                     document.querySelectorAll('.sc-widget, .cookie-banner, .modal, .popup').forEach(el => el.remove());
@@ -101,45 +84,42 @@ async def main():
             """)
             print("✅ Баннеры удалены")
             
-            # ПОШАГОВЫЙ ВЫБОР С ЯВНЫМ ОЖИДАНИЕМ ПОЯВЛЕНИЯ СЛЕДУЮЩЕГО БЛОКА
+            # ПОШАГОВЫЙ ВЫБОР С ТОЧНЫМИ СЕЛЕКТОРАМИ
             
-            # 1. Бакалавриат
+            # 1. Отделение
             print("Выбираем отделение...")
-            await pure_js_click(page, DEPARTMENT)
-            await page.wait_for_timeout(1500) # Ждем AJAX
+            await select_bitrix_option(page, ".section.first", DEPARTMENT)
+            await page.wait_for_selector(".section.specials", state="visible", timeout=10000)
+            print("✅ Блок направлений появился")
             
-            # 2. Логистика
+            # 2. Направление
             print("Выбираем направление...")
-            await pure_js_click(page, MAJOR)
-            # ВАЖНО: Ждем, пока блок курсов реально станет видимым после AJAX
+            await select_bitrix_option(page, ".section.specials", MAJOR)
             await page.wait_for_selector(".section.courses", state="visible", timeout=10000)
             print("✅ Блок курсов появился")
-            await page.wait_for_timeout(1500)
             
-            # 3. 1 курс
+            # 3. Курс
             print("Выбираем курс...")
-            await pure_js_click(page, COURSE)
-            # Ждем появления блока групп
+            await select_bitrix_option(page, ".section.courses", COURSE)
             await page.wait_for_selector(".section.groups", state="visible", timeout=10000)
             print("✅ Блок групп появился")
-            await page.wait_for_timeout(1500)
             
-            # 4. 6661
+            # 4. Группа
             print("Выбираем группу...")
-            await pure_js_click(page, GROUP)
-            # Ждем появления блока месяцев
+            await select_bitrix_option(page, ".section.groups", GROUP)
             await page.wait_for_selector(".section.months", state="visible", timeout=10000)
             print("✅ Блок месяцев появился")
-            await page.wait_for_timeout(1500)
             
-            # 5. сентября
+            # 5. Месяц
             print(f"Выбираем месяц: {current_month}...")
-            await pure_js_click(page, current_month)
-            # Ждем появления самой таблицы расписания
-            await page.wait_for_selector(".table table, table", timeout=15000)
-            print("✅ Таблица расписания появилась")
+            await select_bitrix_option(page, ".section.months", current_month)
             
-            # Дополнительное время на полную отрисовку всех ячеек
+            # 6. Ждем таблицу
+            print("Ожидаем появления таблицы расписания...")
+            await page.wait_for_selector("table", state="visible", timeout=15000)
+            print("✅ Таблица появилась!")
+            
+            # Дополнительное время на отрисовку всех ячеек
             await page.wait_for_timeout(3000)
             
             html = await page.content()
@@ -169,13 +149,11 @@ async def main():
     print("✅ Данные расписания успешно найдены!")
     soup = BeautifulSoup(html, 'html.parser')
     
-    # Ищем таблицу расписания
     table = soup.find('table')
     if not table:
         print("❌ Таблица <table> не найдена в HTML")
         return
     
-    # Ищем ячейки, относящиеся к нашей группе
     schedule_cells = table.find_all('td', attrs={'data-group': True})
     if not schedule_cells:
         schedule_cells = table.find_all('td')
@@ -208,7 +186,6 @@ async def main():
             if not subject or subject in [". .", ""]:
                 continue
             
-            # Парсинг времени
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) == 2:
                 t_start, t_end = time_parts[0], time_parts[1]
@@ -250,7 +227,6 @@ async def main():
     events_data = unique_events
     print(f"📚 Найдено уникальных пар: {len(events_data)}")
 
-    # Создаем ICS файл
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
