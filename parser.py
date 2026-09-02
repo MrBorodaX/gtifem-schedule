@@ -3,6 +3,7 @@ import os
 import requests
 import hashlib
 import re
+import json
 from datetime import datetime
 from collections import defaultdict
 from playwright.async_api import async_playwright
@@ -19,27 +20,49 @@ GROUP = "6661"
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+STATE_FILE = 'schedule_state.json'
+ICS_FILE = 'schedule.ics'
+DEBUG_FILE = 'debug.html'
+
 def send_telegram(message):
-    """Отправка уведомления в Telegram с отладкой"""
+    """Отправка уведомления в Telegram с разбивкой на части, если сообщение длинное"""
     print(f"📤 Попытка отправить в Telegram: {TELEGRAM_BOT_TOKEN[:10] if TELEGRAM_BOT_TOKEN else 'None'}... / {TELEGRAM_CHAT_ID}")
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print(" Telegram токены не настроены!")
+    if not TELEGRAM_BOT_TOKEN or not TELELEGRAM_CHAT_ID:
+        print("⚠️ Telegram токены не настроены!")
         return False
     
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     
-    try:
-        response = requests.post(url, data=data, timeout=10)
-        if response.status_code == 200:
-            print("✅ Уведомление отправлено успешно")
-            return True
-        else:
-            print(f" Ошибка Telegram API: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        print(f"❌ Ошибка отправки: {e}")
-        return False
+    # Telegram ограничивает сообщение 4096 символами, разбиваем если нужно
+    chunks = []
+    if len(message) <= 4000:
+        chunks = [message]
+    else:
+        # Разбиваем по строкам, не разрывая их
+        lines = message.split('\n')
+        current_chunk = ""
+        for line in lines:
+            if len(current_chunk) + len(line) + 1 > 4000:
+                chunks.append(current_chunk)
+                current_chunk = line
+            else:
+                current_chunk = (current_chunk + '\n' + line).strip()
+        if current_chunk:
+            chunks.append(current_chunk)
+    
+    success = True
+    for i, chunk in enumerate(chunks, 1):
+        try:
+            response = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": chunk, "parse_mode": "HTML"}, timeout=10)
+            if response.status_code == 200:
+                print(f"✅ Часть {i}/{len(chunks)} отправлена успешно")
+            else:
+                print(f"❌ Ошибка Telegram API (часть {i}): {response.status_code} - {response.text}")
+                success = False
+        except Exception as e:
+            print(f"❌ Ошибка отправки (часть {i}): {e}")
+            success = False
+    return success
 
 def get_current_month_and_year():
     now = datetime.now()
@@ -52,17 +75,23 @@ def get_current_month_and_year():
     year = now.year if month_num >= 9 else now.year + 1
     return ui_name, year
 
-def get_file_hash(filepath):
-    if not os.path.exists(filepath):
-        return None
-    with open(filepath, 'rb') as f:
-        return hashlib.md5(f.read()).hexdigest()
+def load_previous_state():
+    """Загружает предыдущее состояние расписания"""
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Ошибка чтения {STATE_FILE}: {e}")
+    return None
+
+def save_state(events_data):
+    """Сохраняет текущее состояние расписания"""
+    with open(STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(events_data, f, ensure_ascii=False, indent=2)
 
 def parse_subject_name(subject_full):
-    """
-    Парсит название предмета и тип занятия
-    Пример: "Основы российской государственности (лек)" → ("Основы российской государственности", "ЛЕК")
-    """
+    """Парсит название предмета и тип занятия"""
     match = re.search(r'\((лек|пр|лаб)\)', subject_full, re.IGNORECASE)
     if match:
         subject_type = match.group(1).upper()
@@ -71,21 +100,14 @@ def parse_subject_name(subject_full):
     return subject_full, ""
 
 async def js_click_by_text(page, text):
-    """Клик через чистый JS"""
     try:
         result = await page.evaluate("""
             (target) => {
                 const elements = Array.from(document.querySelectorAll('a'));
                 const match = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase() && el.offsetParent !== null);
-                if (match) {
-                    match.click();
-                    return true;
-                }
+                if (match) { match.click(); return true; }
                 const anyMatch = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase());
-                if (anyMatch) {
-                    anyMatch.click();
-                    return true;
-                }
+                if (anyMatch) { anyMatch.click(); return true; }
                 return false;
             }
         """, text)
@@ -99,7 +121,6 @@ async def js_click_by_text(page, text):
         return False
 
 async def wait_for_visible_elements(page, selector, timeout=10000):
-    """Ждет появления видимых элементов"""
     try:
         await page.wait_for_function("""
             (sel) => {
@@ -111,13 +132,111 @@ async def wait_for_visible_elements(page, selector, timeout=10000):
     except:
         return False
 
+def build_event_key(event):
+    """Уникальный ключ события для сравнения (без номера пары)"""
+    return (event['date'], event['time_start'], event['subject_name'], event['subject_type'])
+
+def compare_schedules(old_state, new_events):
+    """Сравнивает старое и новое расписание, возвращает отчет об изменениях"""
+    if old_state is None:
+        return None, "first_run"
+    
+    # Индексируем по ключу
+    old_dict = {}
+    for ev in old_state:
+        key = build_event_key(ev)
+        old_dict[key] = ev
+    
+    new_dict = {}
+    for ev in new_events:
+        key = build_event_key(ev)
+        new_dict[key] = ev
+    
+    old_keys = set(old_dict.keys())
+    new_keys = set(new_dict.keys())
+    
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    common_keys = old_keys & new_keys
+    
+    # Проверяем изменения в общих событиях (аудитория, преподаватель)
+    changed = []
+    for key in common_keys:
+        old_ev = old_dict[key]
+        new_ev = new_dict[key]
+        changes = []
+        if old_ev['room'] != new_ev['room']:
+            changes.append(('room', old_ev['room'], new_ev['room']))
+        if old_ev['teacher'] != new_ev['teacher']:
+            changes.append(('teacher', old_ev['teacher'], new_ev['teacher']))
+        if old_ev['time_end'] != new_ev['time_end']:
+            changes.append(('time_end', old_ev['time_end'], new_ev['time_end']))
+        if changes:
+            changed.append((key, changes))
+    
+    added = [new_dict[k] for k in sorted(added_keys)]
+    removed = [old_dict[k] for k in sorted(removed_keys)]
+    
+    return {
+        'added': added,
+        'removed': removed,
+        'changed': changed
+    }, "has_changes" if (added or removed or changed) else "no_changes"
+
+def format_event_short(ev):
+    """Короткое форматирование события для отчета"""
+    title = f"{ev['slot_number']}. {ev['subject_type']} {ev['subject_name']}" if ev['subject_type'] else f"{ev['slot_number']}. {ev['subject_name']}"
+    return f"• {ev['date']}, {title}\n   {ev['room']} | 👤 {ev['teacher']}"
+
+def build_telegram_report(changes, group, month_ui):
+    """Формирует HTML-отчет для Telegram"""
+    report = f" <b>Изменения в расписании</b>\n\n"
+    report += f"👥 Группа: {group}\n"
+    report += f" Месяц: {month_ui.capitalize()}\n\n"
+    
+    has_content = False
+    
+    if changes['added']:
+        has_content = True
+        report += " <b>Добавлено:</b>\n"
+        for ev in changes['added']:
+            report += format_event_short(ev) + "\n\n"
+    
+    if changes['removed']:
+        has_content = True
+        report += "➖ <b>Удалено:</b>\n"
+        for ev in changes['removed']:
+            report += format_event_short(ev) + "\n\n"
+    
+    if changes['changed']:
+        has_content = True
+        report += "🔄 <b>Изменено:</b>\n"
+        for key, diffs in changes['changed']:
+            ev = {
+                'date': key[0], 'time_start': key[1],
+                'subject_name': key[2], 'subject_type': key[3],
+                'slot_number': 0, 'room': '', 'teacher': ''
+            }
+            # Найдем номер пары из нового состояния
+            title = f"{ev['subject_type']} {ev['subject_name']}" if ev['subject_type'] else ev['subject_name']
+            report += f"• {ev['date']}, {ev['time_start']} — {title}\n"
+            for field, old_val, new_val in diffs:
+                field_names = {'room': '📍 Аудитория', 'teacher': '👤 Преподаватель', 'time_end': '⏰ Конец'}
+                fname = field_names.get(field, field)
+                report += f"  Было: {old_val}\n  Стало: {new_val}\n"
+            report += "\n"
+    
+    if not has_content:
+        report += "✅ Изменений не обнаружено."
+    
+    return report
+
 async def main():
-    print(" Запуск умного парсера...")
+    print("🚀 Запуск умного парсера...")
     
     current_month_ui, current_year = get_current_month_and_year()
     print(f"📅 Парсим месяц: {current_month_ui} {current_year} года")
     
-    old_hash = get_file_hash('schedule.ics')
     events_data = []
     html = ""
     
@@ -169,19 +288,17 @@ async def main():
             
     except Exception as e:
         print(f"❌ Критическая ошибка: {e}")
-        with open('schedule.ics', 'wb') as f:
-            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
+        send_telegram(f"❌ <b>Ошибка парсера!</b>\n\nГруппа: {GROUP}\nОшибка: {str(e)[:200]}")
         return
 
     if GROUP not in html:
         print("❌ Расписание не загрузилось.")
-        with open('debug.html', 'w', encoding='utf-8') as f:
+        with open(DEBUG_FILE, 'w', encoding='utf-8') as f:
             f.write(html)
         soup = BeautifulSoup(html, 'html.parser')
         body_text = soup.body.get_text(separator=' ', strip=True) if soup.body else ""
         print(f"🔍 ТЕКСТ:\n{body_text[:1000]}")
-        with open('schedule.ics', 'wb') as f:
-            f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
+        send_telegram(f"❌ <b>Расписание не загрузилось!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\n\nПроверьте логи GitHub Actions.")
         return
 
     print("✅ Данные найдены!")
@@ -189,13 +306,12 @@ async def main():
     
     table = soup.find('table')
     if not table:
-        print("❌ Таблица не найдена")
+        print(" Таблица не найдена")
         return
     
     schedule_cells = table.find_all('td', attrs={'data-group': True})
     print(f"🔍 Найдено ячеек: {len(schedule_cells)}")
     
-    # Собираем все события в словарь по датам
     events_by_date = defaultdict(list)
     
     for cell in schedule_cells:
@@ -244,7 +360,6 @@ async def main():
             month_num = month_map.get(data_month_attr.lower(), '09')
             date_fmt = f"{day:02d}.{month_num}.{current_year}"
             
-            # Парсим название предмета и тип
             subject_name, subject_type = parse_subject_name(subject_full)
             
             events_by_date[date_fmt].append({
@@ -259,31 +374,38 @@ async def main():
             print(f"⚠️ Ошибка парсинга ячейки: {e}")
             continue
     
-    # Для каждой даты сортируем события по времени и присваиваем номера по порядку
+    # Сортируем по времени и присваиваем номера по порядку в день
     final_events = []
     for date_fmt, day_events in events_by_date.items():
-        # Сортируем по времени начала
         day_events.sort(key=lambda x: x['time_start'])
-        
-        # Присваиваем номера по порядку (1, 2, 3...)
         for slot_number, event in enumerate(day_events, start=1):
-            # Формируем название: "1. ЛЕК Основы российской государственности"
-            if event['subject_type']:
-                event_title = f"{slot_number}. {event['subject_type']} {event['subject_name']}"
-            else:
-                event_title = f"{slot_number}. {event['subject_name']}"
-            
-            final_events.append({
-                "date": date_fmt,
-                "time_start": event['time_start'],
-                "time_end": event['time_end'],
-                "title": event_title,
-                "room": event['room'],
-                "teacher": event['teacher']
-            })
+            event['slot_number'] = slot_number
+            event['date'] = date_fmt
+            final_events.append(event)
     
-    print(f"📚 Найдено уникальных пар: {len(final_events)}")
-
+    print(f"📚 Найдено пар: {len(final_events)}")
+    
+    # === СРАВНЕНИЕ СО СТАРЫМ СОСТОЯНИЕМ ===
+    old_state = load_previous_state()
+    changes, status = compare_schedules(old_state, final_events)
+    
+    if status == "first_run":
+        print("️ Первый запуск — сохраняем расписание без уведомлений об изменениях.")
+        save_state(final_events)
+        send_telegram(f"✅ <b>Парсер запущен!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар загружено: {len(final_events)}\n\nТеперь бот будет следить за изменениями.")
+    elif status == "no_changes":
+        print("✅ Расписание не изменилось.")
+        # Можно раскомментировать, если хотите получать уведомления даже при отсутствии изменений:
+        # send_telegram(f"✅ <b>Проверка расписания</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(final_events)}\n\nИзменений нет.")
+    elif status == "has_changes":
+        print("🔥 Обнаружены изменения!")
+        save_state(final_events)
+        report = build_telegram_report(changes, GROUP, current_month_ui)
+        send_telegram(report)
+    else:
+        print("️ Неизвестный статус.")
+    
+    # === ГЕНЕРАЦИЯ ICS (всегда, чтобы файл был актуальным) ===
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
@@ -292,7 +414,8 @@ async def main():
     for ev in final_events:
         try:
             event = Event()
-            event.add('summary', ev['title'])
+            title = f"{ev['slot_number']}. {ev['subject_type']} {ev['subject_name']}" if ev['subject_type'] else f"{ev['slot_number']}. {ev['subject_name']}"
+            event.add('summary', title)
             event.add('location', ev['room'])
             event.add('description', ev['teacher'])
             
@@ -306,17 +429,12 @@ async def main():
             print(f"⚠️ Ошибка создания события: {e}")
             continue
 
-    new_ics_data = cal.to_ical()
-    new_hash = hashlib.md5(new_ics_data).hexdigest()
-    
-    if old_hash == new_hash:
-        print("✅ Расписание не изменилось.")
-        send_telegram(f"✅ <b>Проверка расписания</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(final_events)}\n\nИзменений нет.")
-    else:
-        print("🔥 Обнаружены изменения!")
-        with open('schedule.ics', 'wb') as f:
-            f.write(new_ics_data)
-        send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(final_events)}\n\nGoogle Календарь обновится в течение 24 часов.")
+    with open(ICS_FILE, 'wb') as f:
+        f.write(cal.to_ical())
+    print(f"💾 Файл {ICS_FILE} сохранен.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
