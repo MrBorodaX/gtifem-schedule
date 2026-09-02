@@ -40,43 +40,52 @@ def get_file_hash(filepath):
     if not os.path.exists(filepath): return None
     with open(filepath, 'rb') as f: return hashlib.md5(f.read()).hexdigest()
 
-async def select_from_dropdown(page, section_class, value_text):
-    """
-    Выбирает значение из кастомного dropdown
-    section_class: 'groups', 'months' и т.д.
-    value_text: текст для выбора (например, '6661' или 'сентября')
-    """
+async def select_value(page, text, timeout=5000):
+    """Универсальный выбор через JavaScript с прокруткой"""
     try:
-        # Находим секцию dropdown
-        section = page.locator(f".section.{section_class}").first
+        # Используем JavaScript для поиска и клика
+        result = await page.evaluate(f"""
+            () => {{
+                const targetText = '{text}';
+                // Ищем все элементы с текстом
+                const allElements = Array.from(document.querySelectorAll('*'));
+                const matches = allElements.filter(el => 
+                    el.textContent && el.textContent.trim() === targetText
+                );
+                
+                if (matches.length === 0) {{
+                    // Пробуем частичное совпадение
+                    const partialMatches = allElements.filter(el => 
+                        el.textContent && targetText.toLowerCase().includes(el.textContent.trim().toLowerCase())
+                    );
+                    if (partialMatches.length > 0) {{
+                        partialMatches[0].scrollIntoView({{behavior: 'auto', block: 'center'}});
+                        partialMatches[0].click();
+                        return true;
+                    }}
+                    return false;
+                }}
+                
+                // Кликаем по первому совпадению
+                matches[0].scrollIntoView({{behavior: 'auto', block: 'center'}});
+                matches[0].click();
+                return true;
+            }}
+        """)
         
-        # Кликаем по заголовку, чтобы открыть список
-        title = section.locator(".title").first
-        await title.click()
-        await page.wait_for_timeout(500)
-        
-        # Ищем нужный элемент в списке
-        list_items = section.locator("ul li a")
-        count = await list_items.count()
-        
-        for i in range(count):
-            item = list_items.nth(i)
-            text = await item.inner_text()
-            if value_text.lower() in text.lower():
-                await item.click()
-                await page.wait_for_timeout(800)
-                print(f"✅ Выбрано из {section_class}: {value_text}")
-                return
-        
-        print(f"⚠️ Не найдено '{value_text}' в {section_class}")
+        if result:
+            print(f"✅ Выбрано: {text}")
+            await page.wait_for_timeout(800)
+        else:
+            print(f"️ Не найдено: {text}")
     except Exception as e:
-        print(f"⚠️ Ошибка при выборе {section_class} '{value_text}': {e}")
+        print(f"️ Ошибка при выборе '{text}': {e}")
 
 async def main():
     print("🚀 Запуск умного парсера...")
     
     current_month, current_year = get_current_month_and_year()
-    print(f"📅 Парсим месяц: {current_month} {current_year} года")
+    print(f" Парсим месяц: {current_month} {current_year} года")
     
     old_hash = get_file_hash('schedule.ics')
     
@@ -90,17 +99,30 @@ async def main():
             await page.goto("https://gtifem.ru/dekanat/raspisanie/", timeout=30000)
             await page.wait_for_load_state("networkidle")
             
-            # Выбираем из dropdowns
-            # Примечание: на сайте gtifem.ru структура может отличаться
-            # Если dropdowns с отделением/направлением/курсом работают иначе,
-            # используем force click для них
+            # Ждем немного пока страница полностью загрузится
+            await page.wait_for_timeout(2000)
             
-            # Для группы и месяца используем новую функцию
-            await select_from_dropdown(page, "groups", GROUP)
-            await select_from_dropdown(page, "months", current_month)
+            # Последовательно выбираем все параметры через JavaScript
+            # Порядок важен: сначала отделение, потом направление, курс, группа, месяц
+            targets = [DEPARTMENT, MAJOR, COURSE, GROUP, current_month]
+            
+            for text in targets:
+                print(f"Выбираем: {text}")
+                await select_value(page, text)
+                await page.wait_for_timeout(1000)  # Ждем между выборами
             
             print("Ожидаем появления таблицы...")
-            await page.wait_for_selector("table", timeout=15000)
+            # Пробуем найти таблицу разными способами
+            try:
+                await page.wait_for_selector("table", timeout=10000)
+            except:
+                # Если не нашли таблицу, пробуем подождать еще
+                print("Таблица не найдена сразу, ждем еще...")
+                await page.wait_for_timeout(3000)
+            
+            # Делаем скриншот для отладки (можно убрать потом)
+            await page.screenshot(path='debug.png', full_page=True)
+            
             html = await page.content()
             await browser.close()
             
@@ -113,21 +135,27 @@ async def main():
     soup = BeautifulSoup(html, 'html.parser')
     table = soup.find('table')
     if not table:
-        print("❌ Таблица не найдена")
+        print("❌ Таблица не найдена в HTML")
+        # Выводим первые 1000 символов HTML для отладки
+        print("HTML preview:", html[:1000])
         with open('schedule.ics', 'wb') as f:
             f.write(b"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GTIFEM//RU\nEND:VCALENDAR")
         return
 
     rows = table.find_all('tr')
+    print(f" Найдено строк в таблице: {len(rows)}")
+    
     headers = [th.get_text(strip=True) for th in rows[0].find_all(['th', 'td'])]
+    print(f"📌 Заголовки: {headers[:6]}...")  # Показываем первые 6
+    
     date_cols = []
     for i, h in enumerate(headers):
         if any(m in h.lower() for m in ['сентября', 'октября', 'ноября', 'декабря', 'января', 'февраля', 'марта', 'апреля', 'мая', 'июня']):
             date_cols.append((i, h))
-
-    print(f"📅 Найдено колонок с датами: {len(date_cols)}")
     
-    # Парсим матричную структуру таблицы (как в Excel)
+    print(f"📅 Найдено колонок с датами: {len(date_cols)}")
+
+    # Парсим матричную структуру (как в Excel)
     for row_idx, row in enumerate(rows):
         cells = row.find_all(['td', 'th'])
         cell_texts = [c.get_text(strip=True) for c in cells]
@@ -145,21 +173,20 @@ async def main():
                 
                 # Проходим по всем колонкам с датами
                 for col_idx, (date_idx, date_name) in enumerate(date_cols):
-                    target_idx = col_idx + 1  # +1, так как 0-я колонка это время
+                    target_idx = col_idx + 1
                     
                     if target_idx < len(cells) and target_idx < len(prev_cells) and target_idx < len(next_cells):
                         subject = prev_cells[target_idx].get_text(strip=True)
                         room = cells[target_idx].get_text(strip=True)
                         teacher = next_cells[target_idx].get_text(strip=True)
                         
-                        # Игнорируем пустые ячейки
                         if subject and subject not in [". .", ""] and room not in [". .", ""]:
                             events_data.append({
                                 "date": date_name, "time": time_text,
                                 "subject": subject, "room": room, "teacher": teacher
                             })
 
-    print(f"📊 Найдено пар: {len(events_data)}")
+    print(f"📚 Найдено пар: {len(events_data)}")
 
     # Создаем ICS
     cal = Calendar()
@@ -212,9 +239,6 @@ async def main():
         with open('schedule.ics', 'wb') as f:
             f.write(new_ics_data)
         send_telegram(f"🚨 <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
