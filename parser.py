@@ -30,13 +30,14 @@ def send_telegram(message):
 def get_current_month_and_year():
     now = datetime.now()
     month_num = now.month
-    months_ru = {
-        1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
-        9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+    # Именительный падеж (как в выпадающем списке на сайте)
+    months_ui = {
+        1: "январь", 2: "февраль", 3: "март", 4: "апрель", 5: "май", 6: "июнь",
+        9: "сентябрь", 10: "октябрь", 11: "ноябрь", 12: "декабрь"
     }
-    month_name = months_ru.get(month_num, "сентября")
+    ui_name = months_ui.get(month_num, "сентябрь")
     year = now.year if month_num >= 9 else now.year + 1
-    return month_name, year
+    return ui_name, year
 
 def get_file_hash(filepath):
     if not os.path.exists(filepath):
@@ -47,16 +48,17 @@ def get_file_hash(filepath):
 async def js_click_by_text(page, text):
     """Клик через чистый JS - обходит все проверки видимости"""
     try:
-        # Передаем text как аргумент, а не через f-строку
         result = await page.evaluate("""
             (target) => {
                 const elements = Array.from(document.querySelectorAll('a'));
-                const match = elements.find(el => el.textContent.trim() === target && el.offsetParent !== null);
+                // Ищем видимый элемент (регистронезависимо)
+                const match = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase() && el.offsetParent !== null);
                 if (match) {
                     match.click();
                     return true;
                 }
-                const anyMatch = elements.find(el => el.textContent.trim() === target);
+                // Если не нашли видимый, ищем любой
+                const anyMatch = elements.find(el => el.textContent.trim().toLowerCase() === target.toLowerCase());
                 if (anyMatch) {
                     anyMatch.click();
                     return true;
@@ -76,7 +78,6 @@ async def js_click_by_text(page, text):
 async def wait_for_visible_elements(page, selector, timeout=10000):
     """Ждет появления видимых элементов внутри селектора"""
     try:
-        # Передаем selector как аргумент
         await page.wait_for_function("""
             (sel) => {
                 const elements = document.querySelectorAll(sel);
@@ -90,8 +91,8 @@ async def wait_for_visible_elements(page, selector, timeout=10000):
 async def main():
     print("🚀 Запуск умного парсера...")
     
-    current_month, current_year = get_current_month_and_year()
-    print(f"📅 Парсим месяц: {current_month} {current_year} года")
+    current_month_ui, current_year = get_current_month_and_year()
+    print(f"📅 Парсим месяц: {current_month_ui} {current_year} года")
     
     old_hash = get_file_hash('schedule.ics')
     events_data = []
@@ -139,9 +140,9 @@ async def main():
             print("✅ Месяцы загружены")
             await page.wait_for_timeout(1500)
             
-            # 5. сентября
-            print(f"Выбираем месяц: {current_month}...")
-            await js_click_by_text(page, current_month)
+            # 5. сентябрь (теперь скрипт найдет именно "сентябрь", а не "сентября")
+            print(f"Выбираем месяц: {current_month_ui}...")
+            await js_click_by_text(page, current_month_ui)
             await page.wait_for_selector("table", timeout=15000)
             print("✅ Таблица появилась")
             await page.wait_for_timeout(3000)
@@ -183,7 +184,7 @@ async def main():
             cell_text = cell.get_text(strip=True)
             data_day = cell.get('data-day', '')
             data_time = cell.get('data-time', '')
-            data_month_attr = cell.get('data-month', current_month)
+            data_month_attr = cell.get('data-month', current_month_ui)
             
             subject_div = cell.find('div', class_='subject')
             aud_div = cell.find('div', class_='aud')
@@ -215,9 +216,13 @@ async def main():
                     continue
             
             day = int(data_day) if data_day.isdigit() else 1
+            
+            # Словарь теперь понимает оба падежа: "сентябрь" (из HTML) и "сентября" (из Excel/заголовков)
             month_map = {
                 'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12',
-                'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06'
+                'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04', 'мая': '05', 'июня': '06',
+                'сентябрь': '09', 'октябрь': '10', 'ноябрь': '11', 'декабрь': '12',
+                'январь': '01', 'февраль': '02', 'март': '03', 'апрель': '04', 'май': '05', 'июнь': '06'
             }
             month_num = month_map.get(data_month_attr.lower(), '09')
             date_fmt = f"{day:02d}.{month_num}.{current_year}"
@@ -276,7 +281,7 @@ async def main():
         print("🔥 Обнаружены изменения!")
         with open('schedule.ics', 'wb') as f:
             f.write(new_ics_data)
-        send_telegram(f" <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month.title()}\nПар: {len(events_data)}")
+        send_telegram(f" <b>Деканат изменил расписание!</b>\n\nГруппа: {GROUP}\nМесяц: {current_month_ui.capitalize()}\nПар: {len(events_data)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
