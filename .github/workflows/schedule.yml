@@ -17,6 +17,15 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+        cache: 'pip' # 🚀 Включает кэширование для pip (библиотеки Python)
+        
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4 # 🚀 Кэширует сами браузеры Chromium
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ runner.os }}
+        restore-keys: |
+          playwright-browsers-
         
     - name: Install dependencies
       run: |
@@ -34,13 +43,11 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Добавляем и расписание, и файл отладки (если он создан)
-        git add schedule.ics debug.html
+        git add schedule.ics schedule.json debug.html
         
         if git diff --staged --quiet; then
           echo "Изменений нет."
         else
-          git commit -m "chore: update schedule and debug files"
+          git commit -m "chore: update schedule files"
           git push origin HEAD:$(git branch --show-current)
         fi
