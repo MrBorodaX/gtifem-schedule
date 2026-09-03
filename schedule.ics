@@ -36,7 +36,7 @@ SUMMARY:1. ЛЕК Основы российской государстве
  нности
 DTSTART;TZID=Europe/Moscow:20260902T093000
 DTEND;TZID=Europe/Moscow:20260902T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
@@ -44,7 +44,7 @@ SUMMARY:2. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260902T113000
 DTEND;TZID=Europe/Moscow:20260902T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
@@ -52,63 +52,63 @@ SUMMARY:3. ПР Элективные курсы по физической
  культуре и спорту
 DTSTART;TZID=Europe/Moscow:20260902T140000
 DTEND;TZID=Europe/Moscow:20260902T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ковшура Т. Е.
 LOCATION:а.101
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260903T093000
 DTEND;TZID=Europe/Moscow:20260903T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6115
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260903T113000
 DTEND;TZID=Europe/Moscow:20260903T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6115
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛЕК История России
 DTSTART;TZID=Europe/Moscow:20260903T140000
 DTEND;TZID=Europe/Moscow:20260903T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.414
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ЛЕК История России
 DTSTART;TZID=Europe/Moscow:20260903T160000
 DTEND;TZID=Europe/Moscow:20260903T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.414
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260904T093000
 DTEND;TZID=Europe/Moscow:20260904T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260904T113000
 DTEND;TZID=Europe/Moscow:20260904T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛЕК Философия
 DTSTART;TZID=Europe/Moscow:20260904T140000
 DTEND;TZID=Europe/Moscow:20260904T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Коломиец Г. Г.
 LOCATION:а.403
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Философия
 DTSTART;TZID=Europe/Moscow:20260904T160000
 DTEND;TZID=Europe/Moscow:20260904T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Коломиец Г. Г.
 LOCATION:а.403
 END:VEVENT
 BEGIN:VEVENT
@@ -116,7 +116,7 @@ SUMMARY:1. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260907T093000
 DTEND;TZID=Europe/Moscow:20260907T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.414
 END:VEVENT
 BEGIN:VEVENT
@@ -124,21 +124,21 @@ SUMMARY:2. ЛЕК Основы российской государстве
  нности
 DTSTART;TZID=Europe/Moscow:20260907T113000
 DTEND;TZID=Europe/Moscow:20260907T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.414
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛЕК Экономика
 DTSTART;TZID=Europe/Moscow:20260907T140000
 DTEND;TZID=Europe/Moscow:20260907T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260907T160000
 DTEND;TZID=Europe/Moscow:20260907T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
@@ -160,7 +160,7 @@ SUMMARY:3. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260909T140000
 DTEND;TZID=Europe/Moscow:20260909T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.401
 END:VEVENT
 BEGIN:VEVENT
@@ -168,21 +168,21 @@ SUMMARY:4. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260909T160000
 DTEND;TZID=Europe/Moscow:20260909T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.401
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ЛЕК Экономика
 DTSTART;TZID=Europe/Moscow:20260910T093000
 DTEND;TZID=Europe/Moscow:20260910T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6248
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260910T113000
 DTEND;TZID=Europe/Moscow:20260910T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
@@ -197,70 +197,70 @@ BEGIN:VEVENT
 SUMMARY:1. ПР История России
 DTSTART;TZID=Europe/Moscow:20260911T093000
 DTEND;TZID=Europe/Moscow:20260911T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР История России
 DTSTART;TZID=Europe/Moscow:20260911T113000
 DTEND;TZID=Europe/Moscow:20260911T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260911T140000
 DTEND;TZID=Europe/Moscow:20260911T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260911T160000
 DTEND;TZID=Europe/Moscow:20260911T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ЛЕК Экономика
 DTSTART;TZID=Europe/Moscow:20260908T140000
 DTEND;TZID=Europe/Moscow:20260908T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260908T160000
 DTEND;TZID=Europe/Moscow:20260908T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6242
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260914T140000
 DTEND;TZID=Europe/Moscow:20260914T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260914T160000
 DTEND;TZID=Europe/Moscow:20260914T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260916T093000
 DTEND;TZID=Europe/Moscow:20260916T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6245
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260916T113000
 DTEND;TZID=Europe/Moscow:20260916T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6245
 END:VEVENT
 BEGIN:VEVENT
@@ -289,14 +289,14 @@ BEGIN:VEVENT
 SUMMARY:3. ЛЕК Философия
 DTSTART;TZID=Europe/Moscow:20260917T140000
 DTEND;TZID=Europe/Moscow:20260917T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Философия
 DTSTART;TZID=Europe/Moscow:20260917T160000
 DTEND;TZID=Europe/Moscow:20260917T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
@@ -304,7 +304,7 @@ SUMMARY:1. ЛЕК Основы российской государстве
  нности
 DTSTART;TZID=Europe/Moscow:20260921T093000
 DTEND;TZID=Europe/Moscow:20260921T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.403
 END:VEVENT
 BEGIN:VEVENT
@@ -319,21 +319,21 @@ BEGIN:VEVENT
 SUMMARY:1. ЛЕК Экономика
 DTSTART;TZID=Europe/Moscow:20260915T113000
 DTEND;TZID=Europe/Moscow:20260915T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ЛАБ Экономика
 DTSTART;TZID=Europe/Moscow:20260915T140000
 DTEND;TZID=Europe/Moscow:20260915T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6116
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛАБ Экономика
 DTSTART;TZID=Europe/Moscow:20260915T160000
 DTEND;TZID=Europe/Moscow:20260915T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6116
 END:VEVENT
 BEGIN:VEVENT
@@ -341,7 +341,7 @@ SUMMARY:1. ЛЕК Безопасность жизнедеятельнос
  ти
 DTSTART;TZID=Europe/Moscow:20260918T113000
 DTEND;TZID=Europe/Moscow:20260918T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.101
 END:VEVENT
 BEGIN:VEVENT
@@ -349,7 +349,7 @@ SUMMARY:2. ПР Безопасность жизнедеятельност
  и
 DTSTART;TZID=Europe/Moscow:20260918T140000
 DTEND;TZID=Europe/Moscow:20260918T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6249
 END:VEVENT
 BEGIN:VEVENT
@@ -364,56 +364,56 @@ BEGIN:VEVENT
 SUMMARY:1. ПР Философия
 DTSTART;TZID=Europe/Moscow:20260922T093000
 DTEND;TZID=Europe/Moscow:20260922T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР Философия
 DTSTART;TZID=Europe/Moscow:20260922T113000
 DTEND;TZID=Europe/Moscow:20260922T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260922T140000
 DTEND;TZID=Europe/Moscow:20260922T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ЛЕК Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260922T160000
 DTEND;TZID=Europe/Moscow:20260922T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.411
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ПР История России
 DTSTART;TZID=Europe/Moscow:20260923T093000
 DTEND;TZID=Europe/Moscow:20260923T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.406
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:2. ПР История России
 DTSTART;TZID=Europe/Moscow:20260923T113000
 DTEND;TZID=Europe/Moscow:20260923T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Ведерников В. В.
 LOCATION:а.406
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260923T140000
 DTEND;TZID=Europe/Moscow:20260923T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.101
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260923T160000
 DTEND;TZID=Europe/Moscow:20260923T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.101
 END:VEVENT
 BEGIN:VEVENT
@@ -421,7 +421,7 @@ SUMMARY:1. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260924T093000
 DTEND;TZID=Europe/Moscow:20260924T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
@@ -429,21 +429,21 @@ SUMMARY:2. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260924T113000
 DTEND;TZID=Europe/Moscow:20260924T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260924T140000
 DTEND;TZID=Europe/Moscow:20260924T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:4. ПР Теория анализа и статистика
 DTSTART;TZID=Europe/Moscow:20260924T160000
 DTEND;TZID=Europe/Moscow:20260924T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Воронов А. А.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
@@ -458,14 +458,14 @@ BEGIN:VEVENT
 SUMMARY:2. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260928T113000
 DTEND;TZID=Europe/Moscow:20260928T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6248
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ПР Экономика
 DTSTART;TZID=Europe/Moscow:20260928T140000
 DTEND;TZID=Europe/Moscow:20260928T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6248
 END:VEVENT
 BEGIN:VEVENT
@@ -473,7 +473,7 @@ SUMMARY:4. ЛЕК Основы российской государстве
  нности
 DTSTART;TZID=Europe/Moscow:20260928T160000
 DTEND;TZID=Europe/Moscow:20260928T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.406
 END:VEVENT
 BEGIN:VEVENT
@@ -488,14 +488,14 @@ BEGIN:VEVENT
 SUMMARY:2. ЛАБ Экономика
 DTSTART;TZID=Europe/Moscow:20260925T140000
 DTEND;TZID=Europe/Moscow:20260925T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:3. ЛАБ Экономика
 DTSTART;TZID=Europe/Moscow:20260925T160000
 DTEND;TZID=Europe/Moscow:20260925T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Лебедева А. В.
 LOCATION:а.6236
 END:VEVENT
 BEGIN:VEVENT
@@ -503,7 +503,7 @@ SUMMARY:1. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260930T093000
 DTEND;TZID=Europe/Moscow:20260930T111000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
@@ -511,7 +511,7 @@ SUMMARY:2. ПР Основы российской государствен
  ности
 DTSTART;TZID=Europe/Moscow:20260930T113000
 DTEND;TZID=Europe/Moscow:20260930T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Васина О. В.
 LOCATION:а.409
 END:VEVENT
 BEGIN:VEVENT
@@ -540,7 +540,7 @@ BEGIN:VEVENT
 SUMMARY:1. ПР Философия
 DTSTART;TZID=Europe/Moscow:20261002T113000
 DTEND;TZID=Europe/Moscow:20261002T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
@@ -548,7 +548,7 @@ SUMMARY:2. ЛЕК Безопасность жизнедеятельнос
  ти
 DTSTART;TZID=Europe/Moscow:20261002T140000
 DTEND;TZID=Europe/Moscow:20261002T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6115
 END:VEVENT
 BEGIN:VEVENT
@@ -556,14 +556,14 @@ SUMMARY:3. ПР Безопасность жизнедеятельност
  и
 DTSTART;TZID=Europe/Moscow:20261002T160000
 DTEND;TZID=Europe/Moscow:20261002T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6116
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ПР Философия
 DTSTART;TZID=Europe/Moscow:20261102T113000
 DTEND;TZID=Europe/Moscow:20261102T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
@@ -571,7 +571,7 @@ SUMMARY:2. ЛЕК Безопасность жизнедеятельнос
  ти
 DTSTART;TZID=Europe/Moscow:20261102T140000
 DTEND;TZID=Europe/Moscow:20261102T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6115
 END:VEVENT
 BEGIN:VEVENT
@@ -579,14 +579,14 @@ SUMMARY:3. ПР Безопасность жизнедеятельност
  и
 DTSTART;TZID=Europe/Moscow:20261102T160000
 DTEND;TZID=Europe/Moscow:20261102T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6116
 END:VEVENT
 BEGIN:VEVENT
 SUMMARY:1. ПР Философия
 DTSTART;TZID=Europe/Moscow:20261202T113000
 DTEND;TZID=Europe/Moscow:20261202T131000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Семенюк К. А.
 LOCATION:а.Онлайн
 END:VEVENT
 BEGIN:VEVENT
@@ -594,7 +594,7 @@ SUMMARY:2. ЛЕК Безопасность жизнедеятельнос
  ти
 DTSTART;TZID=Europe/Moscow:20261202T140000
 DTEND;TZID=Europe/Moscow:20261202T154000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6115
 END:VEVENT
 BEGIN:VEVENT
@@ -602,7 +602,7 @@ SUMMARY:3. ПР Безопасность жизнедеятельност
  и
 DTSTART;TZID=Europe/Moscow:20261202T160000
 DTEND;TZID=Europe/Moscow:20261202T174000
-DESCRIPTION:Преподаватель не указан
+DESCRIPTION:Кармановская Т. В.
 LOCATION:а.6116
 END:VEVENT
 END:VCALENDAR
