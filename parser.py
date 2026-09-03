@@ -78,6 +78,21 @@ def parse_subject_name(subject_full):
         return subject_full[:match.start()].strip(), match.group(1).upper()
     return subject_full, ""
 
+def extract_teacher_from_cell(cell):
+    """
+    Извлекает имя преподавателя из ячейки.
+    В HTML преподаватель находится как текстовый узел между </div> (aud) и <div class="number">
+    Пример: </div>\n  "Воронов А. А."\n  <div class="number">
+    """
+    cell_html = str(cell)
+    # Ищем текст между закрывающим </div> блока aud и открывающим <div class="number">
+    match = re.search(r'<div class="aud">.*?</div>\s*(.*?)\s*<div class="number">', cell_html, re.DOTALL)
+    if match:
+        teacher = match.group(1).strip().strip('"').strip()
+        if teacher and teacher not in ['. .', '']:
+            return teacher
+    return ""
+
 async def js_click_by_text(page, text):
     try:
         result = await page.evaluate("""
@@ -93,7 +108,7 @@ async def js_click_by_text(page, text):
         if result:
             print(f"✅ Клик: {text}")
         else:
-            print(f"⚠️ Не найден: {text}")
+            print(f"️ Не найден: {text}")
         return result
     except Exception as e:
         print(f"❌ Ошибка клика: {e}")
@@ -138,20 +153,8 @@ def parse_month_html(html, month_ui, year):
                 b_tag = aud_div.find('b')
                 room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
             
-            # Извлекаем преподавателя - ищем во ВСЕХ div после .aud
-            teacher = ""
-            if aud_div:
-                # Ищем следующий div, который не является .aud или .number
-                for sibling in aud_div.find_next_siblings('div'):
-                    sibling_class = sibling.get('class', [])
-                    # Пропускаем div с классом 'number' или 'aud'
-                    if 'number' in sibling_class or 'aud' in sibling_class:
-                        continue
-                    # Берем текст первого подходящего div
-                    teacher_text = sibling.get_text(strip=True)
-                    if teacher_text and teacher_text not in [". .", ""]:
-                        teacher = teacher_text
-                        break
+            # ✅ НОВЫЙ СПОСОБ: извлекаем преподавателя через regex
+            teacher = extract_teacher_from_cell(cell)
             
             if not subject_full or subject_full in [". .", ""]:
                 continue
@@ -257,7 +260,8 @@ def format_telegram_message(added, removed, changed, months_info):
         for month, events in group_by_month(added).items():
             msg += f"  <i>{month.capitalize()}:</i>\n"
             for ev in events[:5]:
-                msg += f"  • {ev['date']} в {ev['time_start']}: {ev['title']} (ауд. {ev['room']})\n"
+                teacher_info = f" ({ev['teacher']})" if ev.get('teacher') else ""
+                msg += f"  • {ev['date']} в {ev['time_start']}: {ev['title']} (ауд. {ev['room']}{teacher_info})\n"
             if len(events) > 5:
                 msg += f"  ... и ещё {len(events) - 5} пар\n"
         msg += "\n"
@@ -302,12 +306,12 @@ async def main():
                     old_events = json.loads(content)
                     print(f"💾 Загружено старое расписание: {len(old_events)} пар")
                 else:
-                    print("️ Файл schedule.json пустой, считаем первый запуск")
+                    print("⚠️ Файл schedule.json пустой, считаем первый запуск")
         except (json.JSONDecodeError, Exception) as e:
             print(f"⚠️ Ошибка чтения schedule.json: {e}, считаем первый запуск")
             old_events = []
     else:
-        print(" Это первый запуск, старого расписания нет.")
+        print("🆕 Это первый запуск, старого расписания нет.")
     
     all_events = []
     
@@ -331,7 +335,7 @@ async def main():
             await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000); await page.wait_for_timeout(1500)
             
             for month_ui, year in months_info:
-                print(f"\n Парсим {month_ui} {year}...")
+                print(f"\n📆 Парсим {month_ui} {year}...")
                 await js_click_by_text(page, month_ui)
                 await page.wait_for_selector("table", timeout=15000)
                 await page.wait_for_timeout(3000)
@@ -351,11 +355,14 @@ async def main():
     
     print(f"\n📚 Всего найдено пар за семестр: {len(all_events)}")
     
+    # Считаем сколько пар с преподавателями
+    teachers_found = sum(1 for ev in all_events if ev.get('teacher'))
+    print(f"‍🏫 Пар с преподавателями: {teachers_found} из {len(all_events)}")
+    
     # Создаем календарь с названием
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
-    # ✅ ДОБАВЛЯЕМ НАЗВАНИЕ КАЛЕНДАРЯ
     cal.add('x-wr-calname', f'ФЭМ - {GROUP}')
     cal.add('x-wr-timezone', 'Europe/Moscow')
     
@@ -366,7 +373,7 @@ async def main():
             event = Event()
             event.add('summary', ev['title'])
             event.add('location', ev['room'])
-            # ✅ ДОБАВЛЯЕМ ПРЕПОДАВАТЕЛЯ В ОПИСАНИЕ
+            # Добавляем преподавателя в описание
             description = ev['teacher'] if ev['teacher'] else "Преподаватель не указан"
             event.add('description', description)
             
@@ -377,7 +384,7 @@ async def main():
             event.add('dtend', end_dt)
             cal.add_component(event)
         except Exception as e:
-            print(f"⚠️ Ошибка создания события: {e}")
+            print(f"️ Ошибка создания события: {e}")
             continue
     
     new_ics_data = cal.to_ical()
@@ -390,7 +397,7 @@ async def main():
     if len(old_events) > 0 and len(removed) > len(old_events) * 0.5:
         is_full_update = True
     
-    # ✅ ВСЕГДА сохраняем файлы
+    # Всегда сохраняем файлы
     with open('schedule.ics', 'wb') as f:
         f.write(new_ics_data)
     with open('schedule.json', 'w', encoding='utf-8') as f:
@@ -401,7 +408,7 @@ async def main():
         month_names_short = ", ".join([m.capitalize() for m, y in months_info[:3]])
         if len(months_info) > 3:
             month_names_short += f" и др."
-        msg = f"🔄 <b>Расписание полностью обновлено ({month_names_short})</b>\n\nГруппа: {GROUP}\nВсего пар в календаре: {len(all_events)}\n\nGoogle Календарь обновится в течение 24 часов."
+        msg = f"🔄 <b>Расписание полностью обновлено ({month_names_short})</b>\n\nГруппа: {GROUP}\nВсего пар в календаре: {len(all_events)}\nПреподавателей указано: {teachers_found}\n\nGoogle Календарь обновится в течение 24 часов."
         send_telegram(msg)
     elif added or removed or changed:
         msg = format_telegram_message(added, removed, changed, months_info)
