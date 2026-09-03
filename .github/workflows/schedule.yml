@@ -12,6 +12,8 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Загружаем всю историю для корректного rebase
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -38,8 +40,15 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: python parser.py
       
+    - name: Pull latest changes
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git pull --rebase origin main || git rebase --abort
+    
     - name: Commit and push if changed
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
         commit_message: "chore: auto-update schedule files"
         file_pattern: "schedule.ics schedule.json debug.html"
+        push_options: '--force-with-lease'
