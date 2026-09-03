@@ -132,16 +132,31 @@ def parse_month_html(html, month_ui, year):
             aud_div = cell.find('div', class_='aud')
             subject_full = subject_div.get_text(strip=True) if subject_div else ""
             
-            room = aud_div.find('b').get_text(strip=True) if aud_div and aud_div.find('b') else ""
+            # Извлекаем аудиторию
+            room = ""
+            if aud_div:
+                b_tag = aud_div.find('b')
+                room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
+            
+            # Извлекаем преподавателя - ищем во ВСЕХ div после .aud
             teacher = ""
             if aud_div:
-                next_div = aud_div.find_next_sibling('div')
-                if next_div and (not next_div.get('class') or 'number' not in next_div.get('class', [])):
-                    teacher = next_div.get_text(strip=True)
+                # Ищем следующий div, который не является .aud или .number
+                for sibling in aud_div.find_next_siblings('div'):
+                    sibling_class = sibling.get('class', [])
+                    # Пропускаем div с классом 'number' или 'aud'
+                    if 'number' in sibling_class or 'aud' in sibling_class:
+                        continue
+                    # Берем текст первого подходящего div
+                    teacher_text = sibling.get_text(strip=True)
+                    if teacher_text and teacher_text not in [". .", ""]:
+                        teacher = teacher_text
+                        break
             
             if not subject_full or subject_full in [". .", ""]:
                 continue
             
+            # Парсим время
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) != 2:
                 time_match = re.search(r'(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})', cell.get_text(strip=True))
@@ -171,7 +186,8 @@ def parse_month_html(html, month_ui, year):
                 "teacher": teacher,
                 "month_ui": month_ui
             })
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Ошибка парсинга ячейки: {e}")
             continue
     
     final_events = []
@@ -207,7 +223,7 @@ def get_diff(old_list, new_list):
             if old_e.get('subject_name') != new_e.get('subject_name'):
                 diffs.append(f"Предмет: {old_e.get('subject_name')} ➡️ {new_e.get('subject_name')}")
             if old_e.get('room') != new_e.get('room'):
-                diffs.append(f"Аудитория: {old_e.get('room')} ️ {new_e.get('room')}")
+                diffs.append(f"Аудитория: {old_e.get('room')} ➡️ {new_e.get('room')}")
             if old_e.get('teacher') != new_e.get('teacher'):
                 diffs.append(f"Преподаватель: {old_e.get('teacher')} ➡️ {new_e.get('teacher')}")
             if diffs:
@@ -237,7 +253,7 @@ def format_telegram_message(added, removed, changed, months_info):
         return groups
     
     if added:
-        msg += " <b>Добавлено:</b>\n"
+        msg += "➕ <b>Добавлено:</b>\n"
         for month, events in group_by_month(added).items():
             msg += f"  <i>{month.capitalize()}:</i>\n"
             for ev in events[:5]:
@@ -247,7 +263,7 @@ def format_telegram_message(added, removed, changed, months_info):
         msg += "\n"
     
     if removed:
-        msg += " <b>Отменено:</b>\n"
+        msg += "➖ <b>Отменено:</b>\n"
         for month, events in group_by_month(removed).items():
             msg += f"  <i>{month.capitalize()}:</i>\n"
             for ev in events[:5]:
@@ -277,7 +293,6 @@ async def main():
     month_names = ", ".join([f"{m} {y}" for m, y in months_info])
     print(f"📅 Парсим семестр: {month_names}")
     
-    # ✅ ИСПРАВЛЕННАЯ ЗАГРУЗКА JSON С ЗАЩИТОЙ ОТ ПУСТЫХ/ПОВРЕЖДЕННЫХ ФАЙЛОВ
     old_events = []
     if os.path.exists('schedule.json'):
         try:
@@ -287,12 +302,12 @@ async def main():
                     old_events = json.loads(content)
                     print(f"💾 Загружено старое расписание: {len(old_events)} пар")
                 else:
-                    print("⚠️ Файл schedule.json пустой, считаем первый запуск")
+                    print("️ Файл schedule.json пустой, считаем первый запуск")
         except (json.JSONDecodeError, Exception) as e:
             print(f"⚠️ Ошибка чтения schedule.json: {e}, считаем первый запуск")
             old_events = []
     else:
-        print("🆕 Это первый запуск, старого расписания нет.")
+        print(" Это первый запуск, старого расписания нет.")
     
     all_events = []
     
@@ -316,7 +331,7 @@ async def main():
             await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000); await page.wait_for_timeout(1500)
             
             for month_ui, year in months_info:
-                print(f"\n📆 Парсим {month_ui} {year}...")
+                print(f"\n Парсим {month_ui} {year}...")
                 await js_click_by_text(page, month_ui)
                 await page.wait_for_selector("table", timeout=15000)
                 await page.wait_for_timeout(3000)
@@ -336,9 +351,14 @@ async def main():
     
     print(f"\n📚 Всего найдено пар за семестр: {len(all_events)}")
     
+    # Создаем календарь с названием
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
+    # ✅ ДОБАВЛЯЕМ НАЗВАНИЕ КАЛЕНДАРЯ
+    cal.add('x-wr-calname', f'ФЭМ - {GROUP}')
+    cal.add('x-wr-timezone', 'Europe/Moscow')
+    
     tz = pytz.timezone('Europe/Moscow')
     
     for ev in all_events:
@@ -346,13 +366,18 @@ async def main():
             event = Event()
             event.add('summary', ev['title'])
             event.add('location', ev['room'])
-            event.add('description', ev['teacher'])
+            # ✅ ДОБАВЛЯЕМ ПРЕПОДАВАТЕЛЯ В ОПИСАНИЕ
+            description = ev['teacher'] if ev['teacher'] else "Преподаватель не указан"
+            event.add('description', description)
+            
             start_dt = tz.localize(datetime.strptime(f"{ev['date']} {ev['time_start']}", "%d.%m.%Y %H:%M"))
             end_dt = tz.localize(datetime.strptime(f"{ev['date']} {ev['time_end']}", "%d.%m.%Y %H:%M"))
+            
             event.add('dtstart', start_dt)
             event.add('dtend', end_dt)
             cal.add_component(event)
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Ошибка создания события: {e}")
             continue
     
     new_ics_data = cal.to_ical()
