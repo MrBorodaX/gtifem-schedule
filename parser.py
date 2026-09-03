@@ -30,19 +30,27 @@ def send_telegram(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️ Токены Telegram не найдены!")
         return False
+    
+    # Разделяем строку с ID по запятой и убираем лишние пробелы
+    chat_ids = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(',')]
+    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
-    try:
-        response = requests.post(url, data=data, timeout=10)
-        if response.status_code == 200:
-            print("✅ Уведомление отправлено")
-            return True
-        else:
-            print(f"❌ Ошибка API: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        print(f"❌ Ошибка сети: {e}")
-        return False
+    data = {"text": message, "parse_mode": "HTML"}
+    
+    success_count = 0
+    for chat_id in chat_ids:
+        data["chat_id"] = chat_id
+        try:
+            response = requests.post(url, data=data, timeout=10)
+            if response.status_code == 200:
+                print(f"✅ Уведомление успешно отправлено пользователю {chat_id}")
+                success_count += 1
+            else:
+                print(f"❌ Ошибка API для {chat_id}: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"❌ Ошибка сети для {chat_id}: {e}")
+            
+    return success_count > 0
 
 def get_semester_months():
     now = datetime.now()
