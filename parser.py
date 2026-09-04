@@ -423,6 +423,7 @@ async def main():
         send_telegram(msg)
     else:
         print("✅ Изменений не найдено. Уведомление не отправляем.")
+        send_telegram("Скрипт отработал. Изменений не найдено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
