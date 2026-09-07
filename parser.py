@@ -20,6 +20,16 @@ GROUP = "6661"
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# Словарь для жесткой привязки времени к номеру пары
+TIME_TO_SLOT = {
+    "09:30": 1,
+    "11:30": 2,
+    "14:00": 3,
+    "16:00": 4,
+    "18:00": 5,
+    "20:00": 6  # На случай вечерних пар
+}
+
 MONTHS_ORDER = [
     "сентябрь", "октябрь", "ноябрь", "декабрь",
     "январь", "февраль", "март", "апрель", "май", "июнь"
@@ -31,9 +41,7 @@ def send_telegram(message):
         print("⚠️ Токены Telegram не найдены!")
         return False
     
-    # Разделяем строку с ID по запятой и убираем лишние пробелы
     chat_ids = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(',')]
-    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {"text": message, "parse_mode": "HTML"}
     
@@ -87,13 +95,7 @@ def parse_subject_name(subject_full):
     return subject_full, ""
 
 def extract_teacher_from_cell(cell):
-    """
-    Извлекает имя преподавателя из ячейки.
-    В HTML преподаватель находится как текстовый узел между </div> (aud) и <div class="number">
-    Пример: </div>\n  "Воронов А. А."\n  <div class="number">
-    """
     cell_html = str(cell)
-    # Ищем текст между закрывающим </div> блока aud и открывающим <div class="number">
     match = re.search(r'<div class="aud">.*?</div>\s*(.*?)\s*<div class="number">', cell_html, re.DOTALL)
     if match:
         teacher = match.group(1).strip().strip('"').strip()
@@ -116,7 +118,7 @@ async def js_click_by_text(page, text):
         if result:
             print(f"✅ Клик: {text}")
         else:
-            print(f"️ Не найден: {text}")
+            print(f"⚠️ Не найден: {text}")
         return result
     except Exception as e:
         print(f"❌ Ошибка клика: {e}")
@@ -155,19 +157,16 @@ def parse_month_html(html, month_ui, year):
             aud_div = cell.find('div', class_='aud')
             subject_full = subject_div.get_text(strip=True) if subject_div else ""
             
-            # Извлекаем аудиторию
             room = ""
             if aud_div:
                 b_tag = aud_div.find('b')
                 room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
             
-            # ✅ НОВЫЙ СПОСОБ: извлекаем преподавателя через regex
             teacher = extract_teacher_from_cell(cell)
             
             if not subject_full or subject_full in [". .", ""]:
                 continue
             
-            # Парсим время
             time_parts = data_time.replace(' ', '').split('-') if data_time else []
             if len(time_parts) != 2:
                 time_match = re.search(r'(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})', cell.get_text(strip=True))
@@ -204,8 +203,17 @@ def parse_month_html(html, month_ui, year):
     final_events = []
     for date_fmt, day_events in events_by_date.items():
         day_events.sort(key=lambda x: x['time_start'])
-        for slot_number, event in enumerate(day_events, start=1):
-            title = f"{slot_number}. {event['subject_type']} {event['subject_name']}" if event['subject_type'] else f"{slot_number}. {event['subject_name']}"
+        
+        # ✅ ИЗМЕНЕНИЕ ЗДЕСЬ: используем словарь TIME_TO_SLOT вместо enumerate
+        for event in day_events:
+            slot_number = TIME_TO_SLOT.get(event['time_start'], 0)
+            
+            if slot_number > 0:
+                title = f"{slot_number}. {event['subject_type']} {event['subject_name']}" if event['subject_type'] else f"{slot_number}. {event['subject_name']}"
+            else:
+                # Если время нестандартное, просто выводим без номера
+                title = f"{event['subject_type']} {event['subject_name']}" if event['subject_type'] else event['subject_name']
+                
             final_events.append({
                 "date": date_fmt,
                 "time_start": event['time_start'],
@@ -363,11 +371,9 @@ async def main():
     
     print(f"\n📚 Всего найдено пар за семестр: {len(all_events)}")
     
-    # Считаем сколько пар с преподавателями
     teachers_found = sum(1 for ev in all_events if ev.get('teacher'))
     print(f"‍🏫 Пар с преподавателями: {teachers_found} из {len(all_events)}")
     
-    # Создаем календарь с названием
     cal = Calendar()
     cal.add('prodid', '-//GTIFEM Schedule//RU')
     cal.add('version', '2.0')
@@ -381,7 +387,6 @@ async def main():
             event = Event()
             event.add('summary', ev['title'])
             event.add('location', ev['room'])
-            # Добавляем преподавателя в описание
             description = ev['teacher'] if ev['teacher'] else "Преподаватель не указан"
             event.add('description', description)
             
@@ -392,7 +397,7 @@ async def main():
             event.add('dtend', end_dt)
             cal.add_component(event)
         except Exception as e:
-            print(f"️ Ошибка создания события: {e}")
+            print(f"⚠️ Ошибка создания события: {e}")
             continue
     
     new_ics_data = cal.to_ical()
@@ -405,7 +410,6 @@ async def main():
     if len(old_events) > 0 and len(removed) > len(old_events) * 0.5:
         is_full_update = True
     
-    # Всегда сохраняем файлы
     with open('schedule.ics', 'wb') as f:
         f.write(new_ics_data)
     with open('schedule.json', 'w', encoding='utf-8') as f:
