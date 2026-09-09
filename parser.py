@@ -27,7 +27,7 @@ TIME_TO_SLOT = {
     "14:00": 3,
     "16:00": 4,
     "18:00": 5,
-    "20:00": 6  # На случай вечерних пар
+    "20:00": 6
 }
 
 MONTHS_ORDER = [
@@ -36,7 +36,7 @@ MONTHS_ORDER = [
 ]
 
 def send_telegram(message):
-    print(f"📤 Отправка в Telegram...")
+    print(f" Отправка в Telegram...")
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️ Токены Telegram не найдены!")
         return False
@@ -118,7 +118,7 @@ async def js_click_by_text(page, text):
         if result:
             print(f"✅ Клик: {text}")
         else:
-            print(f"⚠️ Не найден: {text}")
+            print(f"️ Не найден: {text}")
         return result
     except Exception as e:
         print(f"❌ Ошибка клика: {e}")
@@ -157,10 +157,16 @@ def parse_month_html(html, month_ui, year):
             aud_div = cell.find('div', class_='aud')
             subject_full = subject_div.get_text(strip=True) if subject_div else ""
             
+            # Извлекаем аудиторию
             room = ""
             if aud_div:
                 b_tag = aud_div.find('b')
                 room = b_tag.get_text(strip=True) if b_tag else aud_div.get_text(strip=True)
+            
+            # ✅ ПРОВЕРКА НА ОНЛАЙН
+            cell_html = str(cell).lower()
+            if not room or 'онлайн' in cell_html or 'онлайн занятие' in cell_html:
+                room = "Онлайн"
             
             teacher = extract_teacher_from_cell(cell)
             
@@ -204,14 +210,12 @@ def parse_month_html(html, month_ui, year):
     for date_fmt, day_events in events_by_date.items():
         day_events.sort(key=lambda x: x['time_start'])
         
-        # ✅ ИЗМЕНЕНИЕ ЗДЕСЬ: используем словарь TIME_TO_SLOT вместо enumerate
         for event in day_events:
             slot_number = TIME_TO_SLOT.get(event['time_start'], 0)
             
             if slot_number > 0:
                 title = f"{slot_number}. {event['subject_type']} {event['subject_name']}" if event['subject_type'] else f"{slot_number}. {event['subject_name']}"
             else:
-                # Если время нестандартное, просто выводим без номера
                 title = f"{event['subject_type']} {event['subject_name']}" if event['subject_type'] else event['subject_name']
                 
             final_events.append({
@@ -263,7 +267,7 @@ def format_telegram_message(added, removed, changed, months_info):
     if len(months_info) > 3:
         month_names += f" и ещё {len(months_info) - 3} мес."
     
-    msg = f"🚨 <b>Изменения в расписании ({month_names})</b>\n\n"
+    msg = f" <b>Изменения в расписании ({month_names})</b>\n\n"
     
     def group_by_month(events):
         groups = defaultdict(list)
@@ -351,7 +355,7 @@ async def main():
             await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000); await page.wait_for_timeout(1500)
             
             for month_ui, year in months_info:
-                print(f"\n📆 Парсим {month_ui} {year}...")
+                print(f"\n Парсим {month_ui} {year}...")
                 await js_click_by_text(page, month_ui)
                 await page.wait_for_selector("table", timeout=15000)
                 await page.wait_for_timeout(3000)
@@ -427,7 +431,6 @@ async def main():
         send_telegram(msg)
     else:
         print("✅ Изменений не найдено. Уведомление не отправляем.")
-        send_telegram("Скрипт отработал. Изменений не найдено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
