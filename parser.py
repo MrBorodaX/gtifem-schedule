@@ -360,8 +360,14 @@ async def main():
             await js_click_by_text(page, GROUP); await wait_for_visible_elements(page, ".section.months ul li a", timeout=10000); await page.wait_for_timeout(1500)
             
             for month_ui, year in months_info:
-                print(f"\n Парсим {month_ui} {year}...")
-                await js_click_by_text(page, month_ui)
+                print(f"\n📆 Парсим {month_ui} {year}...")
+                
+                # Проверяем, удался ли клик
+                click_success = await js_click_by_text(page, month_ui)
+                if not click_success:
+                    print(f"️ Пропускаем {month_ui} — не удалось выбрать месяц на сайте")
+                    continue
+                
                 await page.wait_for_selector("table", timeout=15000)
                 await page.wait_for_timeout(3000)
                 
