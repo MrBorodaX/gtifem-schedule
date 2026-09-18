@@ -144,6 +144,11 @@ def parse_month_html(html, month_ui, year):
         return []
     
     schedule_cells = table.find_all('td', attrs={'data-group': True})
+    
+    if len(schedule_cells) < 5: 
+        print(f"⚠️ Расписание для {month_ui} пустое или не загрузилось (найдено ячеек: {len(schedule_cells)})")
+        return []
+    
     print(f"🔍 {month_ui}: найдено ячеек: {len(schedule_cells)}")
     
     events_by_date = defaultdict(list)
@@ -362,6 +367,11 @@ async def main():
                 
                 html = await page.content()
                 month_events = parse_month_html(html, month_ui, year)
+                
+                if len(month_events) == 0:
+                    print(f"⏭️ Пропускаем {month_ui} — расписание ещё не опубликовано")
+                    continue
+                    
                 print(f"✅ {month_ui}: найдено {len(month_events)} пар")
                 all_events.extend(month_events)
                 
